@@ -14,12 +14,19 @@ class Settings(BaseSettings):
     twilio_webhook_url: Optional[str] = None
     twilio_validate_signature: bool = True
     
-    # Gemini API Configuration
-    gemini_api_key: str
-    gemini_model: str = "models/gemini-2.5-flash-preview-native-audio-dialog" # UPDATED
-    gemini_api_version: str = "v1alpha" # NEW - For Live API
-    gemini_language_code: str = "en-US" # NEW - For native audio dialog
-    gemini_voice_name: Optional[str] = None # NEW - e.g., "Puck", if we want to specify a voice
+    # Google Cloud / Vertex AI Configuration
+    google_application_credentials: str
+    google_cloud_project: str
+    google_cloud_location: str = "us-central1"
+    
+    # Gemini Live API Configuration (via Vertex AI)
+    gemini_model: str = "gemini-2.5-flash-preview-native-audio-dialog"
+    gemini_api_version: str = "v1alpha" # For Live API
+    gemini_language_code: str = "en-US" # For native audio dialog
+    gemini_voice_name: Optional[str] = None # e.g., "Puck", if we want to specify a voice
+    
+    # Legacy API Key (keeping for reference, but not used with Vertex AI)
+    # gemini_api_key: Optional[str] = None
     
     # Server Configuration
     host: str = "0.0.0.0"

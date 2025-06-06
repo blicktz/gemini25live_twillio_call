@@ -119,10 +119,19 @@ async def handle_incoming_call(request: Request):
         
         # Start media stream to our WebSocket endpoint
         # The WebSocket URL should be accessible from Twilio's servers
+        logger.info(f"Initial request.url.hostname: {request.url.hostname}, request.url.port: {request.url.port}")
         websocket_url = f"wss://{request.url.hostname}:{request.url.port}/ws/media-stream"
+        logger.info(f"Intermediate websocket_url (before settings check): {websocket_url}")
+        logger.info(f"Value of settings.twilio_webhook_url: {settings.twilio_webhook_url}")
         if settings.twilio_webhook_url:
             # Use configured webhook URL if available
+            logger.info(f"Using settings.twilio_webhook_url to construct websocket_url.")
             websocket_url = settings.twilio_webhook_url.replace('http', 'ws') + "/ws/media-stream"
+        else:
+            logger.info(f"settings.twilio_webhook_url is not set. Using URL derived from request.")
+            # Ensure port is handled correctly for standard https (port 443)
+            port_str = f":{request.url.port}" if request.url.port else ""
+            websocket_url = f"wss://{request.url.hostname}{port_str}/ws/media-stream"
         
         start = response.start()
         start.stream(

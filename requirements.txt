@@ -7,7 +7,7 @@ python-multipart
 twilio
 
 # Google AI/Gemini integration
-google-generativeai
+google-genai
 google-cloud-aiplatform
 aiohttp
 

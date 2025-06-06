@@ -1,7 +1,16 @@
 # app/gemini_integration/streaming.py
 import asyncio
 import logging
-from google import generativeai as genai
+from google import genai
+from google.genai import types
+from google.genai.types import ( # ADDED IMPORTS
+    LiveConnectConfig,
+    Content,
+    Part,
+    SpeechConfig,
+    VoiceConfig,
+    PrebuiltVoiceConfig
+)
 # from google.generativeai.types import LiveSession # Check actual import if needed for type hints
 from app.config import settings
 from typing import Callable, Optional
@@ -16,6 +25,7 @@ class GeminiStreamingClient:
     def __init__(self, model_name: str = settings.gemini_model):
         self.model_name = model_name
         self.live_session: Optional[genai.live.AsyncLiveSession] = None # Type hint for AsyncLiveSession
+        self._session_context_manager = None # ADDED
         self.is_active = False
         self.client = None
         self._audio_send_queue = asyncio.Queue()
@@ -25,16 +35,26 @@ class GeminiStreamingClient:
         self._audio_output_callback: Optional[Callable[[bytes], Awaitable[None]]] = None
         self._text_output_callback: Optional[Callable[[str], Awaitable[None]]] = None
 
-        if not settings.GEMINI_API_KEY:
-            logger.error("GEMINI_API_KEY not found in settings.")
-            raise ValueError("GEMINI_API_KEY must be configured.")
+        if not settings.google_cloud_project:
+            logger.error("GOOGLE_CLOUD_PROJECT not found in settings.")
+            raise ValueError("GOOGLE_CLOUD_PROJECT must be configured for Vertex AI.")
 
         try:
+            # DIAGNOSTIC: Log configuration details
+            logger.info(f"Initializing Gemini Client with Vertex AI:")
+            logger.info(f"  - Project: {settings.google_cloud_project}")
+            logger.info(f"  - Location: {settings.google_cloud_location}")
+            logger.info(f"  - API Version: {settings.gemini_api_version}")
+            logger.info(f"  - Model: {self.model_name}")
+            logger.info(f"  - Credentials: {settings.google_application_credentials}")
+            
             self.client = genai.Client(
-                api_key=settings.GEMINI_API_KEY,
-                http_options={'api_version': settings.gemini_api_version}
+                vertexai=True,
+                project=settings.google_cloud_project,
+                location=settings.google_cloud_location,
+                http_options=types.HttpOptions(api_version=settings.gemini_api_version)
             )
-            logger.info(f"Gemini Client initialized for Live API version '{settings.gemini_api_version}'.")
+            logger.info(f"Gemini Client initialized for Live API version '{settings.gemini_api_version}' with Vertex AI.")
         except Exception as e:
             logger.exception(f"Failed to initialize Gemini Client: {e}")
             raise
@@ -52,22 +72,41 @@ class GeminiStreamingClient:
 
         logger.info(f"Starting Gemini Live API session with model '{self.model_name}'.")
         try:
-            session_config = {
-                "response_modalities": ["AUDIO", "TEXT"],
-                "language_code": settings.gemini_language_code
+            live_connect_config_args = {
+                "response_modalities": ["AUDIO", "TEXT"]
             }
             if settings.gemini_voice_name:
-                session_config["voice"] = settings.gemini_voice_name
+                live_connect_config_args["speech_config"] = SpeechConfig(
+                    voice_config=VoiceConfig(
+                        prebuilt_voice_config=PrebuiltVoiceConfig(
+                            voice_name=settings.gemini_voice_name
+                        )
+                    )
+                )
+            
+            # DIAGNOSTIC: Log session configuration
+            logger.info(f"Live API session configuration:")
+            logger.info(f"  - Model: {self.model_name}")
+            logger.info(f"  - Response modalities: {live_connect_config_args['response_modalities']}")
+            logger.info(f"  - Voice name: {settings.gemini_voice_name}")
+            logger.info(f"  - Client type: {type(self.client)}")
+            
+            session_config = LiveConnectConfig(**live_connect_config_args)
 
-            self.live_session = await self.client.aio.live.connect(
+            self._session_context_manager = self.client.aio.live.connect(
                 model=self.model_name,
                 config=session_config
             )
+            
+            logger.info("Attempting to establish WebSocket connection...")
+            self.live_session = await self._session_context_manager.__aenter__() # MODIFIED
             logger.info(f"Gemini Live API session connected.")
 
             if initial_prompt:
                 logger.info(f"Sending initial prompt to Gemini Live API: '{initial_prompt}'")
-                await self.live_session.send(input=initial_prompt, end_of_turn=True)
+                await self.live_session.send_client_content(
+                    turns=Content(role="user", parts=[Part(text=initial_prompt)])
+                )
 
             self.is_active = True
             self._receive_task = asyncio.create_task(self._receive_loop())
@@ -93,10 +132,13 @@ class GeminiStreamingClient:
                     pass
 
                 if text_message_item:
-                    content = text_message_item['content']
-                    eot = text_message_item['end_of_turn']
-                    logger.info(f"Sending text to Gemini: '{content[:50]}...', end_of_turn: {eot}")
-                    await self.live_session.send(input=content, end_of_turn=eot)
+                    text_content = text_message_item['content']
+                    # end_of_turn is implicitly handled by how send_client_content structures turns.
+                    # For an explicit end-of-turn signal with empty content, this structure is appropriate.
+                    logger.info(f"Sending text to Gemini via send_client_content: '{text_content[:50]}...'")
+                    await self.live_session.send_client_content(
+                        turns=Content(role="user", parts=[Part(text=text_content)])
+                    )
                     self._text_send_queue.task_done()
                     continue
 
@@ -129,18 +171,31 @@ class GeminiStreamingClient:
             async for response in self.live_session.receive():
                 if not self.is_active: break
 
-                if response.data:
-                    logger.info(f"Received audio data chunk of size {len(response.data)} from Gemini.")
-                    if self._audio_output_callback:
-                        await self._audio_output_callback(response.data)
+                # Check for audio data
+                if response.server_content and response.server_content.model_turn and response.server_content.model_turn.parts:
+                    for part in response.server_content.model_turn.parts:
+                        if part.inline_data and part.inline_data.data:
+                            audio_data = part.inline_data.data
+                            logger.info(f"Received audio data chunk of size {len(audio_data)} from Gemini.")
+                            if self._audio_output_callback:
+                                await self._audio_output_callback(audio_data)
+                
+                # Check for text data
                 if response.text:
                     logger.info(f"Gemini text response: {response.text}")
                     if self._text_output_callback:
                         await self._text_output_callback(response.text)
-                if response.error:
+                
+                # Check for errors
+                if response.error: # Assuming error is a top-level attribute in the response object
                     logger.error(f"Gemini Live API error in response: {response.error}")
                     self.is_active = False # Stop on error
                     break
+                
+                # Check for function call (not implemented yet, but good to be aware of)
+                if response.tool_call:
+                    logger.info(f"Received tool_call from Gemini: {response.tool_call}")
+
         except asyncio.CancelledError:
             logger.info("Gemini receive loop cancelled.")
         except Exception as e:
@@ -168,7 +223,7 @@ class GeminiStreamingClient:
             return
 
         logger.info("Stopping Gemini Live API session.")
-        self.is_active = False 
+        self.is_active = False
 
         if self._send_task and not self._send_task.done():
             self._send_task.cancel()
@@ -183,12 +238,15 @@ class GeminiStreamingClient:
             try: await self._receive_task
             except asyncio.CancelledError: logger.info("Receive task confirmed cancelled.")
         
-        # LiveSession does not have an explicit close() method in the examples.
-        # It's typically managed by `async with client.aio.live.connect(...)`.
-        # Since we are not using `async with` for the entire client's lifetime here,
-        # the session might close when tasks end or due to server-side cleanup.
-        # If the SDK provides an explicit close, it should be called.
-        # For now, setting live_session to None.
+        if self._session_context_manager: # ADDED BLOCK
+            try:
+                logger.info("Exiting session context manager.")
+                await self._session_context_manager.__aexit__(None, None, None)
+            except Exception as e:
+                logger.error(f"Error during session context manager __aexit__: {e}")
+            finally:
+                self._session_context_manager = None
+        
         self.live_session = None
         
         # Clear queues
