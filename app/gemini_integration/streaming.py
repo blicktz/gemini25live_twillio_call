@@ -1,262 +1,202 @@
-"""Gemini API streaming client for real-time audio processing."""
-
+# app/gemini_integration/streaming.py
 import asyncio
-import json
 import logging
-import uuid
-from typing import Optional, Callable, Any
-import aiohttp
-import websockets
+from google import generativeai as genai
+# from google.generativeai.types import LiveSession # Check actual import if needed for type hints
 from app.config import settings
+from typing import Callable, Optional
+from collections.abc import Awaitable # ADDED IMPORT
 
+# Configure basic logging (ensure LOG_LEVEL is in settings or handle absence)
+log_level_setting = getattr(settings, 'LOG_LEVEL', 'INFO') # Safely get LOG_LEVEL
+logging.basicConfig(level=log_level_setting.upper())
 logger = logging.getLogger(__name__)
 
-
 class GeminiStreamingClient:
-    """Client for streaming audio to/from Gemini API."""
-    
-    def __init__(self, api_key: str, model: str, system_prompt: str):
-        self.api_key = api_key
-        self.model = model
-        self.system_prompt = system_prompt
-        self.session_id = str(uuid.uuid4())
-        self.websocket: Optional[websockets.WebSocketServerProtocol] = None
+    def __init__(self, model_name: str = settings.gemini_model):
+        self.model_name = model_name
+        self.live_session: Optional[genai.live.AsyncLiveSession] = None # Type hint for AsyncLiveSession
         self.is_active = False
-        self.audio_callback: Optional[Callable[[bytes], None]] = None
-        self._send_queue = asyncio.Queue()
+        self.client = None
+        self._audio_send_queue = asyncio.Queue()
+        self._text_send_queue = asyncio.Queue() # For sending explicit text or end-of-turn signals
         self._receive_task: Optional[asyncio.Task] = None
         self._send_task: Optional[asyncio.Task] = None
-        
-    async def start_session(self):
-        """Start a new streaming session with Gemini API."""
+        self._audio_output_callback: Optional[Callable[[bytes], Awaitable[None]]] = None
+        self._text_output_callback: Optional[Callable[[str], Awaitable[None]]] = None
+
+        if not settings.GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY not found in settings.")
+            raise ValueError("GEMINI_API_KEY must be configured.")
+
         try:
-            # Note: This is a simplified implementation
-            # In practice, you would use the official Google AI SDK
-            # For this MVP, we'll simulate the connection
-            
-            logger.info(f"Starting Gemini session: {self.session_id}")
-            
-            # Initialize session state
-            self.is_active = True
-            
-            # Start background tasks for sending/receiving
-            self._send_task = asyncio.create_task(self._send_loop())
-            self._receive_task = asyncio.create_task(self._receive_loop())
-            
-            # Send initial system prompt
-            await self._send_system_prompt()
-            
-            logger.info(f"Gemini session started successfully: {self.session_id}")
-            
+            self.client = genai.Client(
+                api_key=settings.GEMINI_API_KEY,
+                http_options={'api_version': settings.gemini_api_version}
+            )
+            logger.info(f"Gemini Client initialized for Live API version '{settings.gemini_api_version}'.")
         except Exception as e:
-            logger.error(f"Error starting Gemini session: {e}")
+            logger.exception(f"Failed to initialize Gemini Client: {e}")
             raise
-    
-    async def stop_session(self):
-        """Stop the current streaming session."""
+
+    def set_callbacks(self,
+                      audio_callback: Callable[[bytes], Awaitable[None]],
+                      text_callback: Callable[[str], Awaitable[None]]):
+        self._audio_output_callback = audio_callback
+        self._text_output_callback = text_callback
+
+    async def start_session(self, initial_prompt: str = settings.system_prompt):
+        if self.is_active:
+            logger.warning("Session already active.")
+            return
+
+        logger.info(f"Starting Gemini Live API session with model '{self.model_name}'.")
         try:
-            logger.info(f"Stopping Gemini session: {self.session_id}")
-            
+            session_config = {
+                "response_modalities": ["AUDIO", "TEXT"],
+                "language_code": settings.gemini_language_code
+            }
+            if settings.gemini_voice_name:
+                session_config["voice"] = settings.gemini_voice_name
+
+            self.live_session = await self.client.aio.live.connect(
+                model=self.model_name,
+                config=session_config
+            )
+            logger.info(f"Gemini Live API session connected.")
+
+            if initial_prompt:
+                logger.info(f"Sending initial prompt to Gemini Live API: '{initial_prompt}'")
+                await self.live_session.send(input=initial_prompt, end_of_turn=True)
+
+            self.is_active = True
+            self._receive_task = asyncio.create_task(self._receive_loop())
+            self._send_task = asyncio.create_task(self._send_loop())
+            logger.info("Gemini Live API session started successfully, send/receive loops initiated.")
+
+        except Exception as e:
+            logger.exception(f"Failed to start Gemini Live API session: {e}")
             self.is_active = False
-            
-            # Cancel background tasks
-            if self._send_task:
-                self._send_task.cancel()
-            if self._receive_task:
-                self._receive_task.cancel()
-            
-            # Close WebSocket connection
-            if self.websocket:
-                await self.websocket.close()
-            
-            logger.info(f"Gemini session stopped: {self.session_id}")
-            
-        except Exception as e:
-            logger.error(f"Error stopping Gemini session: {e}")
-    
-    def set_audio_callback(self, callback: Callable[[bytes], None]):
-        """Set callback function for receiving audio from Gemini.
-        
-        Args:
-            callback: Function to call when audio is received from Gemini
-        """
-        self.audio_callback = callback
-    
-    async def send_audio(self, audio_data: bytes):
-        """Send audio data to Gemini API.
-        
-        Args:
-            audio_data: Raw PCM audio data (16kHz, 16-bit)
-        """
-        try:
-            if not self.is_active:
-                return
-            
-            # Create audio message for Gemini
-            message = {
-                "type": "audio_input",
-                "session_id": self.session_id,
-                "audio_data": audio_data.hex(),  # Convert bytes to hex string
-                "format": {
-                    "sample_rate": settings.gemini_input_sample_rate,
-                    "channels": 1,
-                    "bit_depth": 16
-                }
-            }
-            
-            # Add to send queue
-            await self._send_queue.put(message)
-            
-        except Exception as e:
-            logger.error(f"Error sending audio to Gemini: {e}")
-    
-    async def _send_system_prompt(self):
-        """Send initial system prompt to Gemini."""
-        try:
-            message = {
-                "type": "system_prompt",
-                "session_id": self.session_id,
-                "prompt": self.system_prompt,
-                "model": self.model,
-                "config": {
-                    "audio_input_format": {
-                        "sample_rate": settings.gemini_input_sample_rate,
-                        "channels": 1,
-                        "bit_depth": 16
-                    },
-                    "audio_output_format": {
-                        "sample_rate": settings.gemini_output_sample_rate,
-                        "channels": 1,
-                        "bit_depth": 16
-                    }
-                }
-            }
-            
-            await self._send_queue.put(message)
-            
-        except Exception as e:
-            logger.error(f"Error sending system prompt: {e}")
-    
+            self.live_session = None # Ensure session is cleared on failure
+            raise
+
     async def _send_loop(self):
-        """Background task for sending messages to Gemini."""
+        logger.info("Gemini send loop started.")
         try:
-            while self.is_active:
-                try:
-                    # Get message from queue with timeout
-                    message = await asyncio.wait_for(
-                        self._send_queue.get(), timeout=1.0
-                    )
-                    
-                    # Simulate sending to Gemini API
-                    await self._simulate_gemini_request(message)
-                    
-                except asyncio.TimeoutError:
+            while self.is_active and self.live_session:
+                text_message_item = None
+                audio_chunk_item = None
+                
+                try: # Check for text message first
+                    text_message_item = self._text_send_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+
+                if text_message_item:
+                    content = text_message_item['content']
+                    eot = text_message_item['end_of_turn']
+                    logger.info(f"Sending text to Gemini: '{content[:50]}...', end_of_turn: {eot}")
+                    await self.live_session.send(input=content, end_of_turn=eot)
+                    self._text_send_queue.task_done()
                     continue
-                except Exception as e:
-                    logger.error(f"Error in send loop: {e}")
+
+                try: # Then check for audio chunk
+                    audio_chunk_item = self._audio_send_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    await asyncio.sleep(0.01) # Small pause if both queues are empty
+                    continue
+                
+                if audio_chunk_item:
+                    # logger.info(f"Sending audio chunk of size {len(audio_chunk_item)} bytes to Gemini.")
+                    await self.live_session.send(input=audio_chunk_item, end_of_turn=False)
+                    self._audio_send_queue.task_done()
                     
         except asyncio.CancelledError:
-            logger.info("Send loop cancelled")
+            logger.info("Gemini send loop cancelled.")
         except Exception as e:
-            logger.error(f"Fatal error in send loop: {e}")
-    
+            logger.exception(f"Error in Gemini send loop: {e}")
+            self.is_active = False 
+        finally:
+            logger.info("Gemini send loop finished.")
+
     async def _receive_loop(self):
-        """Background task for receiving messages from Gemini."""
+        logger.info("Gemini receive loop started.")
         try:
-            while self.is_active:
-                try:
-                    # Simulate receiving audio from Gemini
-                    await self._simulate_gemini_response()
-                    
-                    # Wait a bit before next iteration
-                    await asyncio.sleep(0.1)
-                    
-                except Exception as e:
-                    logger.error(f"Error in receive loop: {e}")
-                    
+            if not self.live_session:
+                logger.error("Receive loop started without an active session.")
+                return
+
+            async for response in self.live_session.receive():
+                if not self.is_active: break
+
+                if response.data:
+                    logger.info(f"Received audio data chunk of size {len(response.data)} from Gemini.")
+                    if self._audio_output_callback:
+                        await self._audio_output_callback(response.data)
+                if response.text:
+                    logger.info(f"Gemini text response: {response.text}")
+                    if self._text_output_callback:
+                        await self._text_output_callback(response.text)
+                if response.error:
+                    logger.error(f"Gemini Live API error in response: {response.error}")
+                    self.is_active = False # Stop on error
+                    break
         except asyncio.CancelledError:
-            logger.info("Receive loop cancelled")
+            logger.info("Gemini receive loop cancelled.")
         except Exception as e:
-            logger.error(f"Fatal error in receive loop: {e}")
-    
-    async def _simulate_gemini_request(self, message: dict):
-        """Simulate sending request to Gemini API.
-        
-        In a real implementation, this would use the official Google AI SDK
-        or make HTTP/WebSocket requests to the Gemini API.
-        
-        Args:
-            message: Message to send to Gemini
-        """
-        try:
-            # Log the message type for debugging
-            msg_type = message.get('type', 'unknown')
-            logger.debug(f"Sending {msg_type} to Gemini API")
-            
-            # In a real implementation, you would:
-            # 1. Use the official Google AI SDK
-            # 2. Make authenticated requests to Gemini API
-            # 3. Handle streaming responses
-            
-            # For this MVP, we'll just log the action
-            if msg_type == "audio_input":
-                audio_length = len(message.get('audio_data', '')) // 2  # hex string length
-                logger.debug(f"Sent {audio_length} bytes of audio to Gemini")
-            elif msg_type == "system_prompt":
-                logger.info("Sent system prompt to Gemini")
-            
-        except Exception as e:
-            logger.error(f"Error simulating Gemini request: {e}")
-    
-    async def _simulate_gemini_response(self):
-        """Simulate receiving response from Gemini API.
-        
-        In a real implementation, this would process actual responses
-        from the Gemini API and extract audio data.
-        """
-        try:
-            # Simulate occasional audio responses
-            import random
-            if random.random() < 0.1:  # 10% chance of response
-                # Generate dummy audio data (silence)
-                # In real implementation, this would be actual TTS audio from Gemini
-                sample_rate = settings.gemini_output_sample_rate
-                duration_ms = 100  # 100ms of audio
-                samples = int(sample_rate * duration_ms / 1000)
-                
-                # Generate silence (zeros) as dummy audio
-                dummy_audio = b'\x00' * (samples * 2)  # 2 bytes per sample (16-bit)
-                
-                # Call audio callback if set
-                if self.audio_callback:
-                    await self.audio_callback(dummy_audio)
-                
-                logger.debug(f"Simulated audio response: {len(dummy_audio)} bytes")
-            
-        except Exception as e:
-            logger.error(f"Error simulating Gemini response: {e}")
+            logger.exception(f"Error in Gemini receive loop: {e}")
+            self.is_active = False
+        finally:
+            logger.info("Gemini receive loop finished.")
 
+    async def send_audio_chunk(self, audio_chunk: bytes):
+        if not self.is_active:
+            # logger.warning("Session not active. Cannot send audio.")
+            return
+        await self._audio_send_queue.put(audio_chunk)
 
-# Note: Real Implementation Guide
-# ===============================
-# 
-# For a production implementation, you would replace the simulation methods
-# with actual Gemini API integration:
-# 
-# 1. Install the official Google AI SDK:
-#    pip install google-generativeai
-# 
-# 2. Use the streaming capabilities:
-#    import google.generativeai as genai
-#    
-#    genai.configure(api_key=api_key)
-#    model = genai.GenerativeModel(model_name)
-#    
-# 3. Implement real-time streaming:
-#    - Use the model's streaming methods
-#    - Handle audio input/output formats
-#    - Manage session state properly
-# 
-# 4. Handle authentication and rate limiting
-# 
-# 5. Implement proper error handling and reconnection logic
+    async def signal_end_of_user_turn(self):
+        if not self.is_active:
+            logger.warning("Session not active. Cannot signal end of turn.")
+            return
+        logger.info("Signaling end of user turn to Gemini.")
+        await self._text_send_queue.put({"content": "", "end_of_turn": True})
+
+    async def stop_session(self):
+        if not self.is_active:
+            # logger.info("Gemini session already inactive.")
+            return
+
+        logger.info("Stopping Gemini Live API session.")
+        self.is_active = False 
+
+        if self._send_task and not self._send_task.done():
+            self._send_task.cancel()
+        if self._receive_task and not self._receive_task.done():
+            self._receive_task.cancel()
+
+        # Wait for tasks to complete cancellation
+        if self._send_task:
+            try: await self._send_task
+            except asyncio.CancelledError: logger.info("Send task confirmed cancelled.")
+        if self._receive_task:
+            try: await self._receive_task
+            except asyncio.CancelledError: logger.info("Receive task confirmed cancelled.")
+        
+        # LiveSession does not have an explicit close() method in the examples.
+        # It's typically managed by `async with client.aio.live.connect(...)`.
+        # Since we are not using `async with` for the entire client's lifetime here,
+        # the session might close when tasks end or due to server-side cleanup.
+        # If the SDK provides an explicit close, it should be called.
+        # For now, setting live_session to None.
+        self.live_session = None
+        
+        # Clear queues
+        while not self._audio_send_queue.empty():
+            try: self._audio_send_queue.get_nowait(); self._audio_send_queue.task_done()
+            except asyncio.QueueEmpty: break
+        while not self._text_send_queue.empty():
+            try: self._text_send_queue.get_nowait(); self._text_send_queue.task_done()
+            except asyncio.QueueEmpty: break
+
+        logger.info("Gemini Live API session stopped and cleaned up.")

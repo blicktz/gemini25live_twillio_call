@@ -16,7 +16,10 @@ class Settings(BaseSettings):
     
     # Gemini API Configuration
     gemini_api_key: str
-    gemini_model: str = "gemini-2.5-flash-preview"
+    gemini_model: str = "models/gemini-2.5-flash-preview-native-audio-dialog" # UPDATED
+    gemini_api_version: str = "v1alpha" # NEW - For Live API
+    gemini_language_code: str = "en-US" # NEW - For native audio dialog
+    gemini_voice_name: Optional[str] = None # NEW - e.g., "Puck", if we want to specify a voice
     
     # Server Configuration
     host: str = "0.0.0.0"
@@ -32,6 +35,10 @@ class Settings(BaseSettings):
     # AI Configuration
     system_prompt: str = "You are a friendly and helpful AI assistant answering phone calls. Keep your responses conversational, concise, and natural. Respond as if you're having a real-time voice conversation."
     
+    # Logging Configuration (Example - Add if not present and used by Gemini client)
+    LOG_LEVEL: str = "INFO"
+
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

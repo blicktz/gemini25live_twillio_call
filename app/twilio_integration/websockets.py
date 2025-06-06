@@ -5,6 +5,7 @@ import logging
 import asyncio
 from typing import Dict, Optional
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState # ADDED IMPORT
 from app.config import settings
 from app.core.models import TwilioMediaMessage, TwilioOutboundMedia, CallSession
 from app.audio_processing.utils import audio_processor
@@ -25,7 +26,10 @@ class TwilioMediaStreamHandler:
         self.gemini_client: Optional[GeminiStreamingClient] = None
         self.stream_sid: Optional[str] = None
         self.is_active = False
-        
+        # TODO: Add a timer or mechanism to detect end of user speech for signal_end_of_user_turn
+        self._user_speech_timer: Optional[asyncio.TimerHandle] = None
+        self._silence_threshold_sec = 1.0 # Example: 1 second of silence
+
     async def handle_connection(self):
         """Handle the WebSocket connection lifecycle."""
         try:
@@ -40,7 +44,7 @@ class TwilioMediaStreamHandler:
         except WebSocketDisconnect:
             logger.info("WebSocket disconnected")
         except Exception as e:
-            logger.error(f"Error in WebSocket connection: {e}")
+            logger.error(f"Error in WebSocket connection: {e}", exc_info=True)
         finally:
             await self._cleanup()
     
@@ -56,8 +60,8 @@ class TwilioMediaStreamHandler:
                 logger.info("WebSocket disconnected during message listening")
                 break
             except Exception as e:
-                logger.error(f"Error processing WebSocket message: {e}")
-                break
+                logger.error(f"Error processing WebSocket message: {e}", exc_info=True)
+                break # Stop listening on error
     
     async def _process_message(self, message: str):
         """Process incoming message from Twilio.
@@ -76,14 +80,18 @@ class TwilioMediaStreamHandler:
                 await self._handle_media_message(msg)
             elif msg.event == "stop":
                 await self._handle_stream_stop(msg)
+            elif msg.event == "mark": # Handle mark messages if used for VAD
+                logger.info(f"Received mark event: {msg.mark.name if msg.mark else 'N/A'}")
+                if msg.mark and msg.mark.name == "user_finished_speaking": # Example mark name
+                     if self.gemini_client and self.gemini_client.is_active:
+                        await self.gemini_client.signal_end_of_user_turn()
             else:
-                logger.debug(f"Received unknown event: {msg.event}")
-                
+                logger.info(f"Received unknown event: {msg.event}")
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON message: {e}")
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
-    
+            logger.error(f"Error processing message: {e}", exc_info=True)
+
     async def _handle_stream_start(self, msg: TwilioMediaMessage):
         """Handle stream start event from Twilio.
         
@@ -113,21 +121,30 @@ class TwilioMediaStreamHandler:
                 active_sessions[call_sid] = self.call_session
             
             # Initialize Gemini streaming client
-            self.gemini_client = GeminiStreamingClient(
-                api_key=settings.gemini_api_key,
-                model=settings.gemini_model,
-                system_prompt=settings.system_prompt
+            self.gemini_client = GeminiStreamingClient() # Uses model from settings by default
+            self.gemini_client.set_callbacks(
+                audio_callback=self._send_audio_to_twilio,
+                text_callback=self._handle_gemini_text_response
             )
-            
-            # Start Gemini session and set up audio callback
-            await self.gemini_client.start_session()
-            self.gemini_client.set_audio_callback(self._send_audio_to_twilio)
-            
-            logger.info(f"Gemini session started for call: {call_sid}")
-            
+            await self.gemini_client.start_session(initial_prompt=settings.system_prompt)
+            logger.info(f"Gemini Live API session started for call: {call_sid}")
+
         except Exception as e:
-            logger.error(f"Error handling stream start: {e}")
-    
+            logger.error(f"Error handling stream start: {e}", exc_info=True)
+            if self.gemini_client and self.gemini_client.is_active:
+                await self.gemini_client.stop_session()
+            self.gemini_client = None # Ensure it's cleared
+
+    def _reset_user_speech_timer(self):
+        if self._user_speech_timer:
+            self._user_speech_timer.cancel()
+        if self.gemini_client and self.gemini_client.is_active:
+            loop = asyncio.get_event_loop()
+            self._user_speech_timer = loop.call_later(
+                self._silence_threshold_sec,
+                lambda: asyncio.create_task(self.gemini_client.signal_end_of_user_turn())
+            )
+
     async def _handle_media_message(self, msg: TwilioMediaMessage):
         """Handle incoming audio media from Twilio.
         
@@ -135,27 +152,30 @@ class TwilioMediaStreamHandler:
             msg: Twilio media message containing audio data
         """
         try:
-            if not msg.media or not self.gemini_client:
+            if not msg.media or not self.gemini_client or not self.gemini_client.is_active:
                 return
-            
-            # Extract audio payload (base64 encoded MuLaw)
+
             audio_payload = msg.media.get('payload')
             if not audio_payload:
                 return
             
-            # Convert Twilio audio (8kHz MuLaw) to Gemini format (16kHz PCM)
+            # self._reset_user_speech_timer() # Reset timer on receiving new audio
+
             pcm_audio = audio_processor.process_twilio_to_gemini(
                 audio_payload,
                 input_rate=settings.input_sample_rate,
                 output_rate=settings.gemini_input_sample_rate
             )
-            
-            # Send audio to Gemini
-            await self.gemini_client.send_audio(pcm_audio)
-            
+            await self.gemini_client.send_audio_chunk(pcm_audio)
+            # For simplicity, let's signal end of turn after each chunk for now.
+            # This is not ideal for natural conversation but ensures Gemini responds.
+            # A better VAD or mark-based system is needed for production.
+            await self.gemini_client.signal_end_of_user_turn()
+
+
         except Exception as e:
-            logger.error(f"Error handling media message: {e}")
-    
+            logger.error(f"Error handling media message: {e}", exc_info=True)
+
     async def _handle_stream_stop(self, msg: TwilioMediaMessage):
         """Handle stream stop event from Twilio.
         
@@ -164,15 +184,14 @@ class TwilioMediaStreamHandler:
         """
         try:
             logger.info(f"Media stream stopped: {self.stream_sid}")
-            self.is_active = False
-            
-            # Stop Gemini session
+            self.is_active = False # Mark handler as inactive first
+            if self._user_speech_timer:
+                self._user_speech_timer.cancel()
             if self.gemini_client:
                 await self.gemini_client.stop_session()
-            
         except Exception as e:
-            logger.error(f"Error handling stream stop: {e}")
-    
+            logger.error(f"Error handling stream stop: {e}", exc_info=True)
+
     async def _send_audio_to_twilio(self, audio_data: bytes):
         """Send audio data back to Twilio.
         
@@ -182,47 +201,61 @@ class TwilioMediaStreamHandler:
             audio_data: PCM audio data from Gemini (typically 24kHz)
         """
         try:
-            if not self.is_active or not self.stream_sid:
+            if not self.is_active or not self.stream_sid or \
+               not self.websocket or self.websocket.client_state != WebSocketState.CONNECTED:
+                logger.warning("Cannot send audio to Twilio: WebSocket not active/connected or stream_sid missing.")
                 return
-            
-            # Convert Gemini audio (24kHz PCM) to Twilio format (8kHz MuLaw)
+
             base64_mulaw = audio_processor.process_gemini_to_twilio(
                 audio_data,
                 input_rate=settings.gemini_output_sample_rate,
                 output_rate=settings.output_sample_rate
             )
-            
-            # Create outbound media message
             outbound_msg = TwilioOutboundMedia(
+                event="media", # Ensure event type is media for outbound
                 streamSid=self.stream_sid,
-                media={
-                    "payload": base64_mulaw
-                }
+                media={"payload": base64_mulaw}
             )
-            
-            # Send to Twilio via WebSocket
             await self.websocket.send_text(outbound_msg.json())
-            
-        except Exception as e:
-            logger.error(f"Error sending audio to Twilio: {e}")
-    
-    async def _cleanup(self):
-        """Clean up resources when connection ends."""
-        try:
+        except WebSocketDisconnect:
+            logger.warning("WebSocket disconnected while trying to send audio to Twilio.")
             self.is_active = False
-            
-            # Stop Gemini session
-            if self.gemini_client:
-                await self.gemini_client.stop_session()
-            
-            # Remove from active sessions
-            if self.call_session and self.call_session.call_sid in active_sessions:
-                del active_sessions[self.call_session.call_sid]
-            
-            logger.info(f"Cleaned up WebSocket connection for stream: {self.stream_sid}")
-            
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.error(f"Error sending audio to Twilio: {e}", exc_info=True)
+
+    async def _handle_gemini_text_response(self, text: str):
+        try:
+            call_id_info = self.call_session.call_sid if self.call_session else 'N/A'
+            logger.info(f"Received text from Gemini for call {call_id_info}: {text}")
+        except Exception as e:
+            logger.error(f"Error handling Gemini text response: {e}", exc_info=True)
+
+    async def _cleanup(self):
+        logger.info(f"Cleaning up WebSocket connection for stream: {self.stream_sid or 'N/A'}")
+        self.is_active = False # Ensure inactive
+        if self._user_speech_timer:
+            self._user_speech_timer.cancel()
+            self._user_speech_timer = None
+
+        if self.gemini_client:
+            await self.gemini_client.stop_session()
+            self.gemini_client = None
+        
+        if self.call_session and self.call_session.call_sid in active_sessions:
+            try:
+                del active_sessions[self.call_session.call_sid]
+                logger.info(f"Removed session {self.call_session.call_sid} from active_sessions.")
+            except KeyError:
+                logger.warning(f"Session {self.call_session.call_sid} already removed or not found in active_sessions.")
+        
+        # Ensure WebSocket is closed if not already
+        if self.websocket and self.websocket.client_state == WebSocketState.CONNECTED:
+            try:
+                await self.websocket.close()
+                logger.info("WebSocket closed during cleanup.")
+            except Exception as e:
+                logger.error(f"Error closing WebSocket during cleanup: {e}", exc_info=True)
+        logger.info(f"Cleaned up WebSocket connection for stream: {self.stream_sid or 'N/A'} - completed.")
 
 
 async def handle_media_stream(websocket: WebSocket):

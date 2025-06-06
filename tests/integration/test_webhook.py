@@ -18,7 +18,12 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-BASE_URL = "http://localhost:8000"
+#BASE_URL = "http://localhost:8000"
+
+BASE_URL = "https://a761-2601-647-4d7c-2000-1444-6178-59bc-b5bb.ngrok-free.app"
+
+
+
 
 def generate_twilio_signature(url: str, params: Dict[str, str], auth_token: str) -> str:
     """Generate a valid Twilio signature for webhook validation.
