@@ -7,9 +7,46 @@ import requests
 import json
 import time
 import sys
+import os
+import hmac
+import hashlib
+import base64
+from urllib.parse import urlencode
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 BASE_URL = "http://localhost:8000"
+
+def generate_twilio_signature(url: str, params: Dict[str, str], auth_token: str) -> str:
+    """Generate a valid Twilio signature for webhook validation.
+    
+    Args:
+        url: The full URL of the webhook endpoint
+        params: The form parameters being sent
+        auth_token: The Twilio auth token
+        
+    Returns:
+        Base64-encoded HMAC-SHA1 signature
+    """
+    # Sort parameters and create query string
+    sorted_params = sorted(params.items())
+    query_string = urlencode(sorted_params)
+    
+    # Create the signature string: URL + sorted parameters
+    signature_string = url + query_string
+    
+    # Generate HMAC-SHA1 signature
+    signature = hmac.new(
+        auth_token.encode('utf-8'),
+        signature_string.encode('utf-8'),
+        hashlib.sha1
+    ).digest()
+    
+    # Return base64-encoded signature
+    return base64.b64encode(signature).decode('utf-8')
 
 def test_health_endpoints() -> bool:
     """Test health check endpoints."""
@@ -55,19 +92,49 @@ def test_twilio_webhooks() -> bool:
             "AccountSid": "xxx"
         }
         
+        # Get Twilio auth token from environment (should match server config)
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        print(f"   Using auth token: {auth_token[:10]}...")
+        
+        # Generate Twilio signature
+        webhook_url = f"{BASE_URL}/api/v1/twilio-voice"
+        signature = generate_twilio_signature(webhook_url, webhook_data, auth_token)
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Twilio-Signature": signature
+        }
+        
         response = requests.post(
-            f"{BASE_URL}/api/v1/twilio-voice",
+            webhook_url,
             data=webhook_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
+            headers=headers
         )
         
+        print(f"   Response status: {response.status_code}")
+        print(f"   Response headers: {dict(response.headers)}")
+        print(f"   Response content: {response.text}")
+        
+        # Check each assertion individually for better debugging
+        print(f"   Checking status code: {response.status_code == 200}")
         assert response.status_code == 200
-        assert "application/xml" in response.headers.get("content-type", "")
-        assert "<Say>" in response.text
-        assert "<Stream>" in response.text
+        
+        content_type = response.headers.get("content-type", "")
+        print(f"   Checking content-type: 'application/xml' in '{content_type}' = {'application/xml' in content_type}")
+        assert "application/xml" in content_type
+        
+        print(f"   Checking <Say tag: {'<Say' in response.text}")
+        assert "<Say" in response.text  # Match both <Say> and <Say voice="...">
+        
+        print(f"   Checking <Stream tag: {'<Stream' in response.text}")
+        assert "<Stream" in response.text  # Match both <Stream> and <Stream />
+        
         print("✅ Voice webhook test passed")
     except Exception as e:
         print(f"❌ Voice webhook test failed: {e}")
+        print(f"   Response status code: {getattr(e, 'response', {}).get('status_code', 'N/A')}")
+        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+            print(f"   Response content: {e.response.text}")
         return False
     
     # Test status webhook
@@ -77,10 +144,22 @@ def test_twilio_webhooks() -> bool:
             "CallStatus": "completed"
         }
         
+        # Get Twilio auth token from environment (should match server config)
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN', '95e0c91978c694d76facc168c7ec1bec')
+        
+        # Generate Twilio signature
+        status_url = f"{BASE_URL}/api/v1/twilio-status"
+        signature = generate_twilio_signature(status_url, status_data, auth_token)
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Twilio-Signature": signature
+        }
+        
         response = requests.post(
-            f"{BASE_URL}/api/v1/twilio-status",
+            status_url,
             data=status_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
+            headers=headers
         )
         
         assert response.status_code == 200

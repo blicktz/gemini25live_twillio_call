@@ -12,7 +12,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Initialize Twilio request validator for webhook security
-request_validator = RequestValidator(settings.twilio_auth_token)
+try:
+    if not settings.twilio_auth_token:
+        logger.warning("TWILIO_AUTH_TOKEN not set - signature validation will fail")
+        request_validator = None
+    else:
+        request_validator = RequestValidator(settings.twilio_auth_token)
+        logger.info("Twilio RequestValidator initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Twilio RequestValidator: {e}")
+    request_validator = None
 
 
 def validate_twilio_request(request: Request, body: str) -> bool:
@@ -26,16 +35,35 @@ def validate_twilio_request(request: Request, body: str) -> bool:
         True if request is valid, False otherwise
     """
     try:
+        logger.info(f"Starting Twilio request validation")
+        logger.info(f"Request validator available: {request_validator is not None}")
+        
+        # Check if request_validator is available
+        if request_validator is None:
+            logger.info("RequestValidator not initialized - skipping validation")
+            return False
+            
         # Get the X-Twilio-Signature header
         signature = request.headers.get('X-Twilio-Signature', '')
+        logger.info(f"Twilio signature header present: {bool(signature)}")
         
         # Get the full URL
         url = str(request.url)
+        logger.info(f"Request URL: {url}")
+        logger.info(f"Request body type: {type(body)}")
+        logger.info(f"Request body length: {len(body) if body else 0}")
         
         # Validate the request
-        return request_validator.validate(url, body, signature)
+        logger.info("Calling request_validator.validate()")
+        is_valid = request_validator.validate(url, body, signature)
+        logger.info(f"Validation result: {is_valid}")
+        return is_valid
     except Exception as e:
         logger.error(f"Error validating Twilio request: {e}")
+        logger.info(f"Request validator type: {type(request_validator)}")
+        logger.info(f"Body type: {type(body)}")
+        logger.info(f"URL type: {type(url)}")
+        logger.info(f"Signature type: {type(signature)}")
         return False
 
 
@@ -50,18 +78,30 @@ async def handle_incoming_call(request: Request):
         TwiML response to start media streaming
     """
     try:
+        logger.info("=== Starting webhook handler ===")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request URL: {request.url}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        
         # Get raw body for signature validation
         body = await request.body()
         body_str = body.decode('utf-8')
+        logger.info(f"Raw body received: {body_str}")
         
         # Validate request is from Twilio (optional but recommended)
-        if not validate_twilio_request(request, body_str):
-            logger.warning("Invalid Twilio signature detected")
-            # In production, you might want to reject invalid requests
-            # raise HTTPException(status_code=403, detail="Invalid signature")
+        if settings.twilio_validate_signature:
+            logger.info("About to validate Twilio request")
+            if not validate_twilio_request(request, body_str):
+                logger.warning("Invalid Twilio signature detected")
+                # In production, you might want to reject invalid requests
+                # raise HTTPException(status_code=403, detail="Invalid signature")
+        else:
+            logger.info("Twilio signature validation disabled")
         
         # Parse form data
+        logger.info("About to parse form data")
         form_data = await request.form()
+        logger.info(f"Form data parsed successfully: {dict(form_data)}")
         
         # Extract call information
         call_sid = form_data.get('CallSid')

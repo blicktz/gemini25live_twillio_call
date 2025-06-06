@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     twilio_account_sid: str
     twilio_auth_token: str
     twilio_webhook_url: Optional[str] = None
+    twilio_validate_signature: bool = True
     
     # Gemini API Configuration
     gemini_api_key: str
