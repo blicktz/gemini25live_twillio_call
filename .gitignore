@@ -251,3 +251,6 @@ docker-compose.override.yml
 # ngrok
 ngrok
 ngrok.exe
+
+credentials*.json 
+
