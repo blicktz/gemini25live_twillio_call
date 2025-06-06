@@ -52,7 +52,7 @@ def test_twilio_webhooks() -> bool:
             "To": "+15559876543",
             "CallStatus": "ringing",
             "Direction": "inbound",
-            "AccountSid": "AC1234567890abcdef1234567890abcdef"
+            "AccountSid": "xxx"
         }
         
         response = requests.post(

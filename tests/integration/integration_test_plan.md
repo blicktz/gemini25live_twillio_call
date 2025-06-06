@@ -65,7 +65,7 @@ curl -X POST http://localhost:8000/api/v1/twilio-voice \
   -d "To=%2B15559876543" \
   -d "CallStatus=ringing" \
   -d "Direction=inbound" \
-  -d "AccountSid=AC1234567890abcdef1234567890abcdef" \
+  -d "AccountSid=xxxx" \
   -v
 ```
 
@@ -296,7 +296,7 @@ def test_twilio_webhooks() -> bool:
             "To": "+15559876543",
             "CallStatus": "ringing",
             "Direction": "inbound",
-            "AccountSid": "AC1234567890abcdef1234567890abcdef"
+            "AccountSid": "xxx"
         }
         
         response = requests.post(
