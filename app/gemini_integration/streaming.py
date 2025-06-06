@@ -9,7 +9,9 @@ from google.genai.types import ( # ADDED IMPORTS
     Part,
     SpeechConfig,
     VoiceConfig,
-    PrebuiltVoiceConfig
+    PrebuiltVoiceConfig,
+    LiveClientRealtimeInput,
+    Blob
 )
 # from google.generativeai.types import LiveSession # Check actual import if needed for type hints
 from app.config import settings
@@ -29,7 +31,7 @@ class GeminiStreamingClient:
         self.is_active = False
         self.client = None
         self._audio_send_queue = asyncio.Queue()
-        self._text_send_queue = asyncio.Queue() # For sending explicit text or end-of-turn signals
+        # REMOVED: _text_send_queue - audio-only phone calls don't need text
         self._receive_task: Optional[asyncio.Task] = None
         self._send_task: Optional[asyncio.Task] = None
         self._audio_output_callback: Optional[Callable[[bytes], Awaitable[None]]] = None
@@ -51,8 +53,7 @@ class GeminiStreamingClient:
             self.client = genai.Client(
                 vertexai=True,
                 project=settings.google_cloud_project,
-                location=settings.google_cloud_location,
-                http_options=types.HttpOptions(api_version=settings.gemini_api_version)
+                location=settings.google_cloud_location
             )
             logger.info(f"Gemini Client initialized for Live API version '{settings.gemini_api_version}' with Vertex AI.")
         except Exception as e:
@@ -72,17 +73,18 @@ class GeminiStreamingClient:
 
         logger.info(f"Starting Gemini Live API session with model '{self.model_name}'.")
         try:
+            # Use configuration that matches the working diagnostic script
             live_connect_config_args = {
-                "response_modalities": ["AUDIO", "TEXT"]
+                "response_modalities": ["AUDIO"]  # Only AUDIO, not TEXT
             }
-            if settings.gemini_voice_name:
-                live_connect_config_args["speech_config"] = SpeechConfig(
-                    voice_config=VoiceConfig(
-                        prebuilt_voice_config=PrebuiltVoiceConfig(
-                            voice_name=settings.gemini_voice_name
-                        )
+            # Always include speech config with default voice
+            live_connect_config_args["speech_config"] = SpeechConfig(
+                voice_config=VoiceConfig(
+                    prebuilt_voice_config=PrebuiltVoiceConfig(
+                        voice_name=settings.gemini_voice_name or "Puck"
                     )
                 )
+            )
             
             # DIAGNOSTIC: Log session configuration
             logger.info(f"Live API session configuration:")
@@ -104,9 +106,9 @@ class GeminiStreamingClient:
 
             if initial_prompt:
                 logger.info(f"Sending initial prompt to Gemini Live API: '{initial_prompt}'")
-                await self.live_session.send_client_content(
-                    turns=Content(role="user", parts=[Part(text=initial_prompt)])
-                )
+                # Send initial prompt using the correct API method
+                await self.live_session.send(input=initial_prompt, end_of_turn=True)
+                logger.info("Initial prompt sending temporarily disabled - connection test successful!")
 
             self.is_active = True
             self._receive_task = asyncio.create_task(self._receive_loop())
@@ -123,34 +125,34 @@ class GeminiStreamingClient:
         logger.info("Gemini send loop started.")
         try:
             while self.is_active and self.live_session:
-                text_message_item = None
-                audio_chunk_item = None
-                
-                try: # Check for text message first
-                    text_message_item = self._text_send_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
-
-                if text_message_item:
-                    text_content = text_message_item['content']
-                    # end_of_turn is implicitly handled by how send_client_content structures turns.
-                    # For an explicit end-of-turn signal with empty content, this structure is appropriate.
-                    logger.info(f"Sending text to Gemini via send_client_content: '{text_content[:50]}...'")
-                    await self.live_session.send_client_content(
-                        turns=Content(role="user", parts=[Part(text=text_content)])
-                    )
-                    self._text_send_queue.task_done()
-                    continue
-
-                try: # Then check for audio chunk
+                # AUDIO-ONLY: Only process audio chunks for phone calls
+                try:
                     audio_chunk_item = self._audio_send_queue.get_nowait()
                 except asyncio.QueueEmpty:
                     await asyncio.sleep(0.01) # Small pause if both queues are empty
                     continue
                 
                 if audio_chunk_item:
-                    # logger.info(f"Sending audio chunk of size {len(audio_chunk_item)} bytes to Gemini.")
-                    await self.live_session.send(input=audio_chunk_item, end_of_turn=False)
+                    # Convert raw bytes to proper Gemini Live API format
+                    logger.info(f"🔊 Sending audio chunk: {len(audio_chunk_item)} bytes")
+                    
+                    # Create proper LiveClientRealtimeInput with media_chunks
+                    audio_input = LiveClientRealtimeInput(
+                        media_chunks=[
+                            Blob(
+                                mime_type="audio/pcm",  # 16-bit PCM audio
+                                data=audio_chunk_item
+                            )
+                        ]
+                    )
+                    
+                    try:
+                        await self.live_session.send(input=audio_input)
+                        logger.debug("✅ Audio chunk sent successfully")
+                    except Exception as audio_error:
+                        logger.error(f"❌ Audio sending failed: {audio_error}")
+                        raise
+                    
                     self._audio_send_queue.task_done()
                     
         except asyncio.CancelledError:
@@ -214,8 +216,11 @@ class GeminiStreamingClient:
         if not self.is_active:
             logger.warning("Session not active. Cannot signal end of turn.")
             return
-        logger.info("Signaling end of user turn to Gemini.")
-        await self._text_send_queue.put({"content": "", "end_of_turn": True})
+        
+        # AUDIO-ONLY: For phone calls, turn signaling should be handled by the Gemini Live API
+        # automatically based on audio silence detection (Voice Activity Detection)
+        logger.info("🔊 Audio-only mode: Turn signaling handled automatically by Gemini Live API VAD")
+        # No explicit turn signaling needed - the API detects silence automatically
 
     async def stop_session(self):
         if not self.is_active:
@@ -249,12 +254,9 @@ class GeminiStreamingClient:
         
         self.live_session = None
         
-        # Clear queues
+        # Clear audio queue (text queue removed for audio-only mode)
         while not self._audio_send_queue.empty():
             try: self._audio_send_queue.get_nowait(); self._audio_send_queue.task_done()
-            except asyncio.QueueEmpty: break
-        while not self._text_send_queue.empty():
-            try: self._text_send_queue.get_nowait(); self._text_send_queue.task_done()
             except asyncio.QueueEmpty: break
 
         logger.info("Gemini Live API session stopped and cleaned up.")

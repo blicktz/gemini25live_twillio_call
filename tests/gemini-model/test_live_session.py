@@ -16,8 +16,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Add the app directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
+# Add the project root directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 async def test_live_session_connection():
     """Test that we can establish a Live API session without WebSocket errors."""

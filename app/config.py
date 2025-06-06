@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     google_cloud_location: str = "us-central1"
     
     # Gemini Live API Configuration (via Vertex AI)
-    gemini_model: str = "gemini-2.5-flash-preview-native-audio-dialog"
+    gemini_model: str = "gemini-2.0-flash-live-preview-04-09"
     gemini_api_version: str = "v1alpha" # For Live API
     gemini_language_code: str = "en-US" # For native audio dialog
     gemini_voice_name: Optional[str] = None # e.g., "Puck", if we want to specify a voice
