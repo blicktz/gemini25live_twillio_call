@@ -3,7 +3,6 @@
 import audioop
 import base64
 import logging
-from typing import bytes
 
 logger = logging.getLogger(__name__)
 

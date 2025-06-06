@@ -1,35 +1,36 @@
-# FastAPI and server dependencies
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+# FastAPI and web server dependencies
+fastapi
+uvicorn[standard]
+python-multipart
 
 # Twilio integration
-twilio==8.10.0
+twilio
 
 # Google AI/Gemini integration
-google-generativeai==0.3.2
-google-cloud-aiplatform==1.38.1
-aiohttp==3.9.1
+google-generativeai
+google-cloud-aiplatform
+aiohttp
 
 # WebSocket support
-websockets==12.0
+websockets
 
 # Configuration management
-python-dotenv==1.0.0
-pydantic[email]==2.5.0
+python-dotenv
+pydantic[email]
+pydantic-settings
 
 # Audio processing
 # Note: audioop is built into Python, but we include pydub as an alternative
-pydub==0.25.1
+pydub
 
 # Async support
-aiofiles==23.2.1
+aiofiles
 
 # Logging and monitoring
-structlog==23.2.0
+structlog
 
 # Development dependencies (optional)
-# pytest==7.4.3
-# pytest-asyncio==0.21.1
-# black==23.11.0
-# flake8==6.1.0
+# pytest
+# pytest-asyncio
+# black
+# isort

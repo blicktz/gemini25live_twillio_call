@@ -3,7 +3,7 @@
 import logging
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import Response
-from twilio.twiml import VoiceResponse
+from twilio.twiml.voice_response import VoiceResponse
 from twilio.request_validator import RequestValidator
 from app.config import settings
 from app.core.models import TwilioWebhookRequest
