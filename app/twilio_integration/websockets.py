@@ -120,14 +120,16 @@ class TwilioMediaStreamHandler:
             if call_sid:
                 active_sessions[call_sid] = self.call_session
             
-            # Initialize Gemini streaming client
-            self.gemini_client = GeminiStreamingClient() # Uses model from settings by default
+            # Initialize Gemini streaming client (ADK-based)
+            self.gemini_client = GeminiStreamingClient()
             self.gemini_client.set_callbacks(
                 audio_callback=self._send_audio_to_twilio,
                 text_callback=self._handle_gemini_text_response
             )
-            await self.gemini_client.start_session(initial_prompt=settings.system_prompt)
-            logger.info(f"Gemini Live API session started for call: {call_sid}")
+            # ADK-based client uses session_id instead of initial_prompt
+            # The system prompt is configured in the root_agent
+            await self.gemini_client.start_session(session_id=call_sid or self.stream_sid)
+            logger.info(f"ADK-based Gemini session started for call: {call_sid}")
 
         except Exception as e:
             logger.error(f"Error handling stream start: {e}", exc_info=True)

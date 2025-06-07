@@ -9,6 +9,7 @@ twilio
 # Google AI/Gemini integration
 google-genai
 google-cloud-aiplatform
+google-adk
 aiohttp
 
 # WebSocket support
@@ -30,7 +31,7 @@ aiofiles
 structlog
 
 # Development dependencies (optional)
-# pytest
-# pytest-asyncio
+pytest
+pytest-asyncio
 # black
 # isort

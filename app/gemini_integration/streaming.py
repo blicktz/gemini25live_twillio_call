@@ -1,258 +1,346 @@
-# app/gemini_integration/streaming.py
+"""
+Refactored GeminiStreamingClient using Google ADK for Twilio voice call integration.
+Phase 1: Foundational ADK Setup with basic lifecycle management.
+Phase 3: Audio sending to ADK implemented.
+"""
+
 import asyncio
 import logging
-from google import genai
-from google.genai import types
-from google.genai.types import ( # ADDED IMPORTS
-    LiveConnectConfig,
-    Content,
-    Part,
-    SpeechConfig,
-    VoiceConfig,
-    PrebuiltVoiceConfig,
-    LiveClientRealtimeInput,
-    Blob
-)
-# from google.generativeai.types import LiveSession # Check actual import if needed for type hints
-from app.config import settings
 from typing import Callable, Optional
-from collections.abc import Awaitable # ADDED IMPORT
+from collections.abc import Awaitable
 
-# Configure basic logging (ensure LOG_LEVEL is in settings or handle absence)
-log_level_setting = getattr(settings, 'LOG_LEVEL', 'INFO') # Safely get LOG_LEVEL
+# ADK imports
+from google.adk.agents import LiveRequestQueue
+from google.adk.agents.run_config import RunConfig
+from google.adk.runners import Runner
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
+from google.genai import types as genai_types
+
+# Import the root agent
+from app.gemini_integration.adk_agent import root_agent
+from app.config import settings
+
+# Configure logging
+log_level_setting = getattr(settings, 'LOG_LEVEL', 'INFO')
 logging.basicConfig(level=log_level_setting.upper())
 logger = logging.getLogger(__name__)
 
+
 class GeminiStreamingClient:
-    def __init__(self, model_name: str = settings.gemini_model):
-        self.model_name = model_name
-        self.live_session: Optional[genai.live.AsyncLiveSession] = None # Type hint for AsyncLiveSession
-        self._session_context_manager = None # ADDED
-        self.is_active = False
-        self.client = None
+    """
+    ADK-based streaming client for Twilio voice call integration.
+    Phase 1: Foundational setup with basic lifecycle management.
+    Phase 3: Audio sending to ADK implemented.
+    """
+    
+    def __init__(self):
+        """Initialize the ADK-based streaming client."""
+        # ADK Session Service
+        self.session_service = InMemorySessionService()
+        
+        # Import and store root agent
+        self.root_agent = root_agent
+        
+        # Application name for ADK
+        self.APP_NAME = "TwilioGeminiADK"
+        
+        # Audio queue for incoming audio from Twilio
         self._audio_send_queue = asyncio.Queue()
-        # REMOVED: _text_send_queue - audio-only phone calls don't need text
-        self._receive_task: Optional[asyncio.Task] = None
-        self._send_task: Optional[asyncio.Task] = None
+        
+        # ADK-specific attributes (initialized to None)
+        self.live_request_queue: Optional[LiveRequestQueue] = None
+        self.live_events = None
+        self.adk_session = None
+        self.runner: Optional[Runner] = None
+        
+        # Session state
+        self.is_active = False
+        
+        # Async tasks for processing loops
+        self._event_loop_task: Optional[asyncio.Task] = None
+        self._send_loop_task: Optional[asyncio.Task] = None
+        
+        # Callbacks for audio and text output
         self._audio_output_callback: Optional[Callable[[bytes], Awaitable[None]]] = None
         self._text_output_callback: Optional[Callable[[str], Awaitable[None]]] = None
-
-        if not settings.google_cloud_project:
-            logger.error("GOOGLE_CLOUD_PROJECT not found in settings.")
-            raise ValueError("GOOGLE_CLOUD_PROJECT must be configured for Vertex AI.")
-
-        try:
-            # DIAGNOSTIC: Log configuration details
-            logger.info(f"Initializing Gemini Client with Vertex AI:")
-            logger.info(f"  - Project: {settings.google_cloud_project}")
-            logger.info(f"  - Location: {settings.google_cloud_location}")
-            logger.info(f"  - API Version: {settings.gemini_api_version}")
-            logger.info(f"  - Model: {self.model_name}")
-            logger.info(f"  - Credentials: {settings.google_application_credentials}")
-            
-            self.client = genai.Client(
-                vertexai=True,
-                project=settings.google_cloud_project,
-                location=settings.google_cloud_location
-            )
-            logger.info(f"Gemini Client initialized for Live API version '{settings.gemini_api_version}' with Vertex AI.")
-        except Exception as e:
-            logger.exception(f"Failed to initialize Gemini Client: {e}")
-            raise
+        
+        logger.info(f"GeminiStreamingClient initialized with ADK for app: {self.APP_NAME}")
 
     def set_callbacks(self,
                       audio_callback: Callable[[bytes], Awaitable[None]],
                       text_callback: Callable[[str], Awaitable[None]]):
+        """Set callbacks for audio and text output."""
         self._audio_output_callback = audio_callback
         self._text_output_callback = text_callback
+        logger.info("Audio and text callbacks set")
 
-    async def start_session(self, initial_prompt: str = settings.system_prompt):
+    async def start_session(self, session_id: str):
+        """
+        Start an ADK session for the given session ID.
+        Phase 1: Focus on ADK object creation and basic lifecycle management.
+        """
         if self.is_active:
             logger.warning("Session already active.")
             return
 
-        logger.info(f"Starting Gemini Live API session with model '{self.model_name}'.")
+        logger.info(f"Starting ADK session with ID: {session_id}")
+        
         try:
-            # Use configuration that matches the working diagnostic script
-            live_connect_config_args = {
-                "response_modalities": ["AUDIO"]  # Only AUDIO, not TEXT
-            }
-            # Always include speech config with default voice
-            live_connect_config_args["speech_config"] = SpeechConfig(
-                voice_config=VoiceConfig(
-                    prebuilt_voice_config=PrebuiltVoiceConfig(
+            # Create ADK Session
+            self.adk_session = self.session_service.create_session(
+                app_name=self.APP_NAME,
+                user_id=session_id,
+                session_id=session_id
+            )
+#            logger.info(f"ADK session created: {self.adk_session.session_id}")
+
+            # Create Runner
+            self.runner = Runner(
+                app_name=self.APP_NAME,
+                agent=self.root_agent,
+                session_service=self.session_service
+            )
+            logger.info("ADK Runner created")
+
+            # Define RunConfig with speech settings
+            speech_config = genai_types.SpeechConfig(
+                voice_config=genai_types.VoiceConfig(
+                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
                         voice_name=settings.gemini_voice_name or "Puck"
                     )
                 )
             )
             
-            # DIAGNOSTIC: Log session configuration
-            logger.info(f"Live API session configuration:")
-            logger.info(f"  - Model: {self.model_name}")
-            logger.info(f"  - Response modalities: {live_connect_config_args['response_modalities']}")
-            logger.info(f"  - Voice name: {settings.gemini_voice_name}")
-            logger.info(f"  - Client type: {type(self.client)}")
-            
-            session_config = LiveConnectConfig(**live_connect_config_args)
+            run_config_dict = {
+                "response_modalities": ["AUDIO"],
+                "speech_config": speech_config,
+                "output_audio_transcription": {}  # To get text logs of user speech
+            }
+            run_config = RunConfig(**run_config_dict)
+            logger.info(f"RunConfig created with voice: {settings.gemini_voice_name or 'Puck'}")
 
-            self._session_context_manager = self.client.aio.live.connect(
-                model=self.model_name,
-                config=session_config
+            # Create LiveRequestQueue
+            self.live_request_queue = LiveRequestQueue()
+            logger.info("LiveRequestQueue created")
+
+            # Start Live Run
+            self.live_events = self.runner.run_live(
+                session=self.adk_session,
+                live_request_queue=self.live_request_queue,
+                run_config=run_config
             )
-            
-            logger.info("Attempting to establish WebSocket connection...")
-            self.live_session = await self._session_context_manager.__aenter__() # MODIFIED
-            logger.info(f"Gemini Live API session connected.")
+            logger.info("ADK live run started")
 
-            if initial_prompt:
-                logger.info(f"Sending initial prompt to Gemini Live API: '{initial_prompt}'")
-                # Send initial prompt using the correct API method
-                await self.live_session.send(input=initial_prompt, end_of_turn=True)
-                logger.info("Initial prompt sending temporarily disabled - connection test successful!")
-
+            # Set session as active
             self.is_active = True
-            self._receive_task = asyncio.create_task(self._receive_loop())
-            self._send_task = asyncio.create_task(self._send_loop())
-            logger.info("Gemini Live API session started successfully, send/receive loops initiated.")
+
+            # Create and start asyncio tasks for processing loops
+            self._event_loop_task = asyncio.create_task(self._process_agent_events_loop())
+            self._send_loop_task = asyncio.create_task(self._send_adk_loop())
+            
+            logger.info("ADK session started successfully with processing loops")
 
         except Exception as e:
-            logger.exception(f"Failed to start Gemini Live API session: {e}")
+            logger.exception(f"Failed to start ADK session: {e}")
             self.is_active = False
-            self.live_session = None # Ensure session is cleared on failure
+            # Clean up any partially created objects
+            await self._cleanup_session_objects()
             raise
 
-    async def _send_loop(self):
-        logger.info("Gemini send loop started.")
-        try:
-            while self.is_active and self.live_session:
-                # AUDIO-ONLY: Only process audio chunks for phone calls
+    async def stop_session(self):
+        """
+        Stop the ADK session and clean up resources.
+        Phase 1: Focus on proper cleanup and task cancellation.
+        """
+        if not self.is_active:
+            logger.info("ADK session already inactive.")
+            return
+
+        logger.info("Stopping ADK session")
+        self.is_active = False
+
+        # Close the live request queue if it exists
+        if self.live_request_queue is not None:
+            try:
+                await self.live_request_queue.close()
+                logger.info("LiveRequestQueue closed")
+            except Exception as e:
+                logger.error(f"Error closing LiveRequestQueue: {e}")
+
+        # Cancel and wait for async tasks
+        await self._cancel_and_wait_tasks()
+
+        # Clean up session objects
+        await self._cleanup_session_objects()
+
+        # Clear audio queue
+        self._clear_audio_queue()
+
+        logger.info("ADK session stopped and cleaned up")
+
+    async def _cancel_and_wait_tasks(self):
+        """Cancel and wait for async tasks to complete."""
+        tasks_to_cancel = []
+        
+        if self._event_loop_task and not self._event_loop_task.done():
+            tasks_to_cancel.append(self._event_loop_task)
+        
+        if self._send_loop_task and not self._send_loop_task.done():
+            tasks_to_cancel.append(self._send_loop_task)
+
+        if tasks_to_cancel:
+            logger.info(f"Cancelling {len(tasks_to_cancel)} async tasks")
+            for task in tasks_to_cancel:
+                task.cancel()
+
+            # Wait for tasks to complete cancellation
+            for task in tasks_to_cancel:
                 try:
-                    audio_chunk_item = self._audio_send_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    await asyncio.sleep(0.01) # Small pause if both queues are empty
-                    continue
-                
-                if audio_chunk_item:
-                    # Convert raw bytes to proper Gemini Live API format
-                    logger.info(f"🔊 Sending audio chunk: {len(audio_chunk_item)} bytes")
-                    
-                    # Create proper LiveClientRealtimeInput with media_chunks
-                    audio_input = LiveClientRealtimeInput(
-                        media_chunks=[
-                            Blob(
-                                mime_type="audio/pcm",  # 16-bit PCM audio
-                                data=audio_chunk_item
-                            )
-                        ]
-                    )
-                    
+                    await task
+                except asyncio.CancelledError:
+                    logger.debug(f"Task {task.get_name()} cancelled successfully")
+                except Exception as e:
+                    logger.error(f"Error during task cancellation: {e}")
+
+    async def _cleanup_session_objects(self):
+        """Clean up ADK session objects."""
+        # Note: InMemorySessionService might not have delete_session method
+        # For now, we'll just clear local references
+        if self.adk_session and self.session_service:
+            try:
+                # Try to delete session if method exists
+                if hasattr(self.session_service, 'delete_session'):
+                    self.session_service.delete_session(self.adk_session.session_id)
+                    logger.info("ADK session deleted from session service")
+            except Exception as e:
+                logger.error(f"Error deleting session from service: {e}")
+
+        # Reset ADK attributes to None
+        self.live_request_queue = None
+        self.live_events = None
+        self.adk_session = None
+        self.runner = None
+        self._event_loop_task = None
+        self._send_loop_task = None
+
+    def _clear_audio_queue(self):
+        """Clear the audio send queue."""
+        while not self._audio_send_queue.empty():
+            try:
+                self._audio_send_queue.get_nowait()
+                self._audio_send_queue.task_done()
+            except asyncio.QueueEmpty:
+                break
+        logger.info("Audio send queue cleared")
+
+    async def send_audio_chunk(self, audio_chunk: bytes):
+        """
+        Queue audio chunk for sending to ADK.
+        Phase 3: Enhanced with validation and error handling.
+        
+        Args:
+            audio_chunk: Raw audio data in 16kHz LPCM16 format from Twilio processing
+        """
+        if not self.is_active:
+            logger.debug("Session not active, ignoring audio chunk")
+            return
+            
+        if not audio_chunk:
+            logger.debug("Empty audio chunk received, ignoring")
+            return
+            
+        try:
+            await self._audio_send_queue.put(audio_chunk)
+            logger.debug(f"Queued audio chunk: {len(audio_chunk)} bytes")
+        except Exception as e:
+            logger.error(f"Failed to queue audio chunk: {e}")
+
+    async def _send_adk_loop(self):
+        """
+        Process audio chunks from queue and send to ADK.
+        Phase 3: Implement actual audio sending to ADK.
+        """
+        logger.info("ADK send loop started")
+        try:
+            while self.is_active:
+                try:
+                    # Get audio chunk from queue with timeout to allow for graceful shutdown
                     try:
-                        await self.live_session.send(input=audio_input)
-                        logger.debug("✅ Audio chunk sent successfully")
-                    except Exception as audio_error:
-                        logger.error(f"❌ Audio sending failed: {audio_error}")
-                        raise
+                        audio_chunk = await asyncio.wait_for(
+                            self._audio_send_queue.get(),
+                            timeout=1.0
+                        )
+                    except asyncio.TimeoutError:
+                        # Continue loop to check is_active status
+                        continue
+                    
+                    if self.live_request_queue and audio_chunk:
+                        # Phase 3: Send audio chunk to ADK
+                        try:
+                            await self.live_request_queue.send_realtime(
+                                genai_types.Blob(data=audio_chunk, mime_type="audio/pcm")
+                            )
+                            logger.debug(f"Sent audio chunk to ADK: {len(audio_chunk)} bytes")
+                        except Exception as e:
+                            logger.error(f"Failed to send audio chunk to ADK: {e}")
+                            # Continue processing other chunks even if one fails
                     
                     self._audio_send_queue.task_done()
                     
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Error in ADK send loop: {e}")
+                    
         except asyncio.CancelledError:
-            logger.info("Gemini send loop cancelled.")
+            logger.info("ADK send loop cancelled")
         except Exception as e:
-            logger.exception(f"Error in Gemini send loop: {e}")
-            self.is_active = False 
-        finally:
-            logger.info("Gemini send loop finished.")
-
-    async def _receive_loop(self):
-        logger.info("Gemini receive loop started.")
-        try:
-            if not self.live_session:
-                logger.error("Receive loop started without an active session.")
-                return
-
-            async for response in self.live_session.receive():
-                if not self.is_active: break
-
-                # Check for audio data
-                if response.server_content and response.server_content.model_turn and response.server_content.model_turn.parts:
-                    for part in response.server_content.model_turn.parts:
-                        if part.inline_data and part.inline_data.data:
-                            audio_data = part.inline_data.data
-                            logger.info(f"Received audio data chunk of size {len(audio_data)} from Gemini.")
-                            if self._audio_output_callback:
-                                await self._audio_output_callback(audio_data)
-                
-                # Check for text data
-                if response.text:
-                    logger.info(f"Gemini text response: {response.text}")
-                    if self._text_output_callback:
-                        await self._text_output_callback(response.text)
-                
-
-                
-                # Check for function call (not implemented yet, but good to be aware of)
-                if response.tool_call:
-                    logger.info(f"Received tool_call from Gemini: {response.tool_call}")
-
-        except asyncio.CancelledError:
-            logger.info("Gemini receive loop cancelled.")
-        except Exception as e:
-            logger.exception(f"Error in Gemini receive loop: {e}")
+            logger.exception(f"Error in ADK send loop: {e}")
             self.is_active = False
         finally:
-            logger.info("Gemini receive loop finished.")
+            logger.info("ADK send loop finished")
 
-    async def send_audio_chunk(self, audio_chunk: bytes):
-        if not self.is_active:
-            # logger.warning("Session not active. Cannot send audio.")
-            return
-        await self._audio_send_queue.put(audio_chunk)
+    async def _process_agent_events_loop(self):
+        """
+        Process events from ADK agent.
+        Phase 1: Basic loop structure (will be enhanced in Phase 4).
+        """
+        logger.info("ADK agent events loop started")
+        try:
+            if not self.live_events:
+                logger.error("No live_events available for processing")
+                return
 
+            async for event in self.live_events:
+                if not self.is_active:
+                    break
+
+                # Phase 1: Log events for debugging
+                if event:
+                    logger.debug(f"Received ADK event: {type(event)}")
+                    
+                    # Log turn completion and interruption events
+                    if hasattr(event, 'turn_complete') and event.turn_complete:
+                        logger.info("ADK: Turn complete")
+                    
+                    if hasattr(event, 'interrupted') and event.interrupted:
+                        logger.info("ADK: Turn interrupted")
+                    
+                    # TODO Phase 4: Process audio and text content
+                    # if event.content and event.content.parts:
+                    #     for part in event.content.parts:
+                    #         # Process audio output
+                    #         # Process text output
+                    
+        except asyncio.CancelledError:
+            logger.info("ADK agent events loop cancelled")
+        except Exception as e:
+            logger.exception(f"Error in ADK agent events loop: {e}")
+            self.is_active = False
+        finally:
+            logger.info("ADK agent events loop finished")
+
+    # Legacy methods for compatibility (will be removed in later phases)
     async def signal_end_of_user_turn(self):
-        if not self.is_active:
-            logger.warning("Session not active. Cannot signal end of turn.")
-            return
-        
-        # AUDIO-ONLY: For phone calls, turn signaling should be handled by the Gemini Live API
-        # automatically based on audio silence detection (Voice Activity Detection)
-        logger.info("🔊 Audio-only mode: Turn signaling handled automatically by Gemini Live API VAD")
-        # No explicit turn signaling needed - the API detects silence automatically
-
-    async def stop_session(self):
-        if not self.is_active:
-            # logger.info("Gemini session already inactive.")
-            return
-
-        logger.info("Stopping Gemini Live API session.")
-        self.is_active = False
-
-        if self._send_task and not self._send_task.done():
-            self._send_task.cancel()
-        if self._receive_task and not self._receive_task.done():
-            self._receive_task.cancel()
-
-        # Wait for tasks to complete cancellation
-        if self._send_task:
-            try: await self._send_task
-            except asyncio.CancelledError: logger.info("Send task confirmed cancelled.")
-        if self._receive_task:
-            try: await self._receive_task
-            except asyncio.CancelledError: logger.info("Receive task confirmed cancelled.")
-        
-        if self._session_context_manager: # ADDED BLOCK
-            try:
-                logger.info("Exiting session context manager.")
-                await self._session_context_manager.__aexit__(None, None, None)
-            except Exception as e:
-                logger.error(f"Error during session context manager __aexit__: {e}")
-            finally:
-                self._session_context_manager = None
-        
-        self.live_session = None
-        
-        # Clear audio queue (text queue removed for audio-only mode)
-        while not self._audio_send_queue.empty():
-            try: self._audio_send_queue.get_nowait(); self._audio_send_queue.task_done()
-            except asyncio.QueueEmpty: break
-
-        logger.info("Gemini Live API session stopped and cleaned up.")
+        """Legacy method - ADK handles turn detection automatically."""
+        logger.info("ADK handles turn detection automatically via VAD")
