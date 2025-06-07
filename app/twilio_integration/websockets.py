@@ -167,10 +167,12 @@ class TwilioMediaStreamHandler:
                 output_rate=settings.gemini_input_sample_rate
             )
             await self.gemini_client.send_audio_chunk(pcm_audio)
+
+            # NOT USED 
             # For simplicity, let's signal end of turn after each chunk for now.
             # This is not ideal for natural conversation but ensures Gemini responds.
             # A better VAD or mark-based system is needed for production.
-            await self.gemini_client.signal_end_of_user_turn()
+            #await self.gemini_client.signal_end_of_user_turn()
 
 
         except Exception as e:

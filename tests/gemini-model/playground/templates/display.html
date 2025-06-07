@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Audio Output Display</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .markdown-content {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .audio-container {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e8f5e8;
+            border-radius: 4px;
+            border: 1px solid #28a745;
+        }
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .refresh-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .refresh-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+    <script>
+        // Auto-refresh every 2 seconds to show new content
+        setTimeout(function() {
+            location.reload();
+        }, 2000);
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Gemini Audio Output Display</h1>
+        
+        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+        
+        {% if markdown_content %}
+            <h2>📝 Text Content</h2>
+            {% for content in markdown_content %}
+                <div class="markdown-content">
+                    {{ content|safe }}
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        {% if audio_files %}
+            <h2>🔊 Audio Output</h2>
+            {% for audio in audio_files %}
+                <div class="audio-container">
+                    <p><strong>Audio File:</strong> {{ audio.filename }}</p>
+                    <audio controls {% if audio.autoplay %}autoplay{% endif %}>
+                        <source src="/audio/{{ audio.filename }}" type="audio/wav">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        {% if not markdown_content and not audio_files %}
+            <div class="markdown-content">
+                <p><em>Waiting for content... The page will auto-refresh every 2 seconds.</em></p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

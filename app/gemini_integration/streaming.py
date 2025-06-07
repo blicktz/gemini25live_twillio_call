@@ -188,11 +188,7 @@ class GeminiStreamingClient:
                     if self._text_output_callback:
                         await self._text_output_callback(response.text)
                 
-                # Check for errors
-                if response.error: # Assuming error is a top-level attribute in the response object
-                    logger.error(f"Gemini Live API error in response: {response.error}")
-                    self.is_active = False # Stop on error
-                    break
+
                 
                 # Check for function call (not implemented yet, but good to be aware of)
                 if response.tool_call:
