@@ -139,10 +139,12 @@ async def handle_incoming_call(request: Request):
             track='both_tracks'  # Capture both inbound and outbound audio
         )
         
+        logger.info(f"Generated TwiML for call {call_sid} with WebSocket URL: {websocket_url}")
+        
         # Keep the call alive
         response.pause(length=60)  # Pause for 60 seconds to keep call active
         
-        logger.info(f"Generated TwiML for call {call_sid} with WebSocket URL: {websocket_url}")
+
         
         # Return TwiML response
         return Response(
