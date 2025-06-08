@@ -205,22 +205,37 @@ class TwilioMediaStreamHandler:
             audio_data: PCM audio data from Gemini (typically 24kHz)
         """
         try:
+            logger.info(f"DEBUG: _send_audio_to_twilio called with {len(audio_data)} bytes")
+            logger.info(f"DEBUG: is_active={self.is_active}, stream_sid={self.stream_sid}")
+            logger.info(f"DEBUG: websocket state={self.websocket.client_state if self.websocket else 'None'}")
+            
             if not self.is_active or not self.stream_sid or \
                not self.websocket or self.websocket.client_state != WebSocketState.CONNECTED:
                 logger.warning("Cannot send audio to Twilio: WebSocket not active/connected or stream_sid missing.")
                 return
+
+            logger.info("Processing audio for Twilio...")
 
             base64_mulaw = audio_processor.process_gemini_to_twilio(
                 audio_data,
                 input_rate=settings.gemini_output_sample_rate,
                 output_rate=settings.output_sample_rate
             )
+            
+            logger.info(f"DEBUG: Processed audio - base64_mulaw length: {len(base64_mulaw)}")
+            
             outbound_msg = TwilioOutboundMedia(
                 event="media", # Ensure event type is media for outbound
                 streamSid=self.stream_sid,
                 media={"payload": base64_mulaw}
             )
-            await self.websocket.send_text(outbound_msg.json())
+            
+            message_json = outbound_msg.json()
+            logger.info(f"DEBUG: Sending message to Twilio: {message_json[:200]}...")
+            
+            await self.websocket.send_text(message_json)
+            logger.info("SUCCESS: Audio message sent to Twilio WebSocket")
+            
         except WebSocketDisconnect:
             logger.warning("WebSocket disconnected while trying to send audio to Twilio.")
             self.is_active = False

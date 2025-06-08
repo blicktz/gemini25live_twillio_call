@@ -21,6 +21,7 @@ class TwilioMediaMessage(BaseModel):
     media: Optional[Dict[str, Any]] = None
     start: Optional[Dict[str, Any]] = None
     stop: Optional[Dict[str, Any]] = None
+    mark: Optional[Dict[str, Any]] = None
 
 
 class TwilioOutboundMedia(BaseModel):
@@ -28,6 +29,10 @@ class TwilioOutboundMedia(BaseModel):
     event: str = "media"
     streamSid: str
     media: Dict[str, str]  # Contains 'payload' with base64 encoded audio
+    
+    class Config:
+        # Ensure field names match Twilio's expected format exactly
+        allow_population_by_field_name = True
 
 
 class AudioChunk(BaseModel):

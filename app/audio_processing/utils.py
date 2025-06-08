@@ -142,14 +142,19 @@ class AudioProcessor:
             Base64 encoded MuLaw audio string for Twilio
         """
         try:
+            logger.info(f"DEBUG: process_gemini_to_twilio - input: {len(pcm_data)} bytes, {input_rate}Hz -> {output_rate}Hz")
+            
             # Resample from input rate to output rate
             resampled_pcm = self.resample_audio(pcm_data, input_rate, output_rate)
+            logger.info(f"DEBUG: Resampled to {len(resampled_pcm)} bytes")
             
             # Convert PCM to MuLaw
             mulaw_data = self.pcm_to_mulaw(resampled_pcm)
+            logger.info(f"DEBUG: Converted to MuLaw: {len(mulaw_data)} bytes")
             
             # Encode to base64
             base64_mulaw = self.encode_base64_audio(mulaw_data)
+            logger.info(f"DEBUG: Base64 encoded: {len(base64_mulaw)} characters")
             
             return base64_mulaw
         except Exception as e:

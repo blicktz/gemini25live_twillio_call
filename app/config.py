@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     google_application_credentials: str
     google_cloud_project: str
     google_cloud_location: str = "us-central1"
+    google_genai_use_vertexai: bool = True
     
     # Gemini Live API Configuration (via Vertex AI)
     gemini_model: str = "gemini-2.0-flash-live-preview-04-09"

@@ -2,10 +2,12 @@
 Refactored GeminiStreamingClient using Google ADK for Twilio voice call integration.
 Phase 1: Foundational ADK Setup with basic lifecycle management.
 Phase 3: Audio sending to ADK implemented.
+Updated to use Vertex AI authentication.
 """
 
 import asyncio
 import logging
+import os
 from typing import Callable, Optional
 from collections.abc import Awaitable
 
@@ -15,6 +17,7 @@ from google.adk.agents.run_config import RunConfig
 from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types as genai_types
+from google.genai.types import Modality
 
 # Import the root agent
 from app.gemini_integration.adk_agent import root_agent
@@ -35,6 +38,9 @@ class GeminiStreamingClient:
     
     def __init__(self):
         """Initialize the ADK-based streaming client."""
+        # Verify Vertex AI authentication setup
+        self._verify_vertexai_auth()
+        
         # ADK Session Service
         self.session_service = InMemorySessionService()
         
@@ -66,6 +72,40 @@ class GeminiStreamingClient:
         
         logger.info(f"GeminiStreamingClient initialized with ADK for app: {self.APP_NAME}")
 
+    def _verify_vertexai_auth(self):
+        """Verify that Vertex AI authentication is properly configured."""
+        try:
+            # Check required environment variables
+            required_vars = [
+                "GOOGLE_APPLICATION_CREDENTIALS",
+                "GOOGLE_CLOUD_PROJECT",
+                "GOOGLE_CLOUD_LOCATION"
+            ]
+            
+            missing_vars = []
+            for var in required_vars:
+                if not os.environ.get(var):
+                    missing_vars.append(var)
+            
+            if missing_vars:
+                raise ValueError(f"Missing required environment variables for Vertex AI: {missing_vars}")
+            
+            # Check if credentials file exists
+            creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            if creds_path and not os.path.exists(creds_path):
+                raise FileNotFoundError(f"Google Cloud credentials file not found: {creds_path}")
+            
+            # Log authentication configuration
+            logger.info("Vertex AI authentication verified:")
+            logger.info(f"  Project: {os.environ.get('GOOGLE_CLOUD_PROJECT')}")
+            logger.info(f"  Location: {os.environ.get('GOOGLE_CLOUD_LOCATION')}")
+            logger.info(f"  Credentials: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
+            logger.info(f"  Use Vertex AI: {os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'False')}")
+            
+        except Exception as e:
+            logger.error(f"Vertex AI authentication verification failed: {e}")
+            raise
+
     def set_callbacks(self,
                       audio_callback: Callable[[bytes], Awaitable[None]],
                       text_callback: Callable[[str], Awaitable[None]]):
@@ -83,11 +123,12 @@ class GeminiStreamingClient:
             logger.warning("Session already active.")
             return
 
+
         logger.info(f"Starting ADK session with ID: {session_id}")
         
         try:
             # Create ADK Session
-            self.adk_session = self.session_service.create_session(
+            self.adk_session = await self.session_service.create_session(
                 app_name=self.APP_NAME,
                 user_id=session_id,
                 session_id=session_id
@@ -112,12 +153,17 @@ class GeminiStreamingClient:
             )
             
             run_config_dict = {
-                "response_modalities": ["AUDIO"],
+                "response_modalities": [Modality.AUDIO],
                 "speech_config": speech_config,
-                "output_audio_transcription": {}  # To get text logs of user speech
+                "output_audio_transcription": {},  # To get text logs of user speech
+                "input_audio_transcription": {}   # Enable input audio transcription for VAD
             }
             run_config = RunConfig(**run_config_dict)
-            logger.info(f"RunConfig created with voice: {settings.gemini_voice_name or 'Puck'}")
+            logger.info(f"DEBUG: RunConfig created with:")
+            logger.info(f"  - Voice: {settings.gemini_voice_name or 'Puck'}")
+            logger.info(f"  - Response modalities: {run_config_dict['response_modalities']}")
+            logger.info(f"  - Speech config: {speech_config}")
+            logger.info(f"  - Output audio transcription: {run_config_dict['output_audio_transcription']}")
 
             # Create LiveRequestQueue
             self.live_request_queue = LiveRequestQueue()
@@ -277,7 +323,7 @@ class GeminiStreamingClient:
                     if self.live_request_queue and audio_chunk:
                         # Phase 3: Send audio chunk to ADK
                         try:
-                            await self.live_request_queue.send_realtime(
+                            self.live_request_queue.send_realtime(
                                 genai_types.Blob(data=audio_chunk, mime_type="audio/pcm")
                             )
                             logger.debug(f"Sent audio chunk to ADK: {len(audio_chunk)} bytes")
@@ -316,7 +362,16 @@ class GeminiStreamingClient:
                     break
 
                 if event:
-                    logger.debug(f"Received ADK event: {type(event)}")
+                    # Enhanced logging to debug audio issues
+                    logger.info(f"DEBUG: Received ADK event type: {type(event)}")
+                    
+                    # Log event attributes for debugging
+                    if hasattr(event, '__dict__'):
+                        logger.info(f"DEBUG: Event attributes: {list(event.__dict__.keys())}")
+                    
+                    # Check if this is a partial or complete event (important for audio)
+                    if hasattr(event, 'partial'):
+                        logger.info(f"DEBUG: Event is partial: {event.partial}")
                     
                     # Handle turn completion and interruption events
                     if hasattr(event, 'turn_complete') and event.turn_complete:
@@ -325,9 +380,25 @@ class GeminiStreamingClient:
                     if hasattr(event, 'interrupted') and event.interrupted:
                         logger.info("ADK: Turn interrupted")
                     
-                    # Phase 4: Process audio and text content
-                    if hasattr(event, 'content') and event.content and hasattr(event.content, 'parts') and event.content.parts:
-                        await self._process_event_content_parts(event.content.parts)
+                    # Enhanced content processing with detailed logging
+                    if hasattr(event, 'content') and event.content:
+                        logger.info(f"DEBUG: Event has content of type: {type(event.content)}")
+                        if hasattr(event.content, 'parts') and event.content.parts:
+                            logger.info(f"DEBUG: Content has {len(event.content.parts)} parts")
+                            for i, part in enumerate(event.content.parts):
+                                logger.info(f"DEBUG: Part {i} type: {type(part)}")
+                                if hasattr(part, 'inline_data') and part.inline_data:
+                                    logger.info(f"DEBUG: Part {i} has inline_data with mime_type: {getattr(part.inline_data, 'mime_type', 'None')}")
+                                    if hasattr(part.inline_data, 'data'):
+                                        data_len = len(part.inline_data.data) if part.inline_data.data else 0
+                                        logger.info(f"DEBUG: Part {i} inline_data has {data_len} bytes of data")
+                                if hasattr(part, 'text') and part.text:
+                                    logger.info(f"DEBUG: Part {i} has text: {part.text[:50]}...")
+                            await self._process_event_content_parts(event.content.parts, event)
+                        else:
+                            logger.info("DEBUG: Content has no parts or parts is empty")
+                    else:
+                        logger.info("DEBUG: Event has no content")
                     
         except asyncio.CancelledError:
             logger.info("ADK agent events loop cancelled")
@@ -339,22 +410,32 @@ class GeminiStreamingClient:
         finally:
             logger.info("ADK agent events loop finished")
 
-    async def _process_event_content_parts(self, parts):
+    async def _process_event_content_parts(self, parts, event=None):
         """
         Process content parts from ADK events.
         Phase 4: Handle both audio and text content.
         
         Args:
             parts: List of content parts from ADK event
+            event: The full event object for additional context
         """
         try:
-            for part in parts:
+            event_partial = getattr(event, 'partial', None) if event else None
+            logger.info(f"DEBUG: Processing {len(parts)} parts, event partial: {event_partial}")
+            
+            for i, part in enumerate(parts):
+                logger.info(f"DEBUG: Processing part {i} of {len(parts)}")
+                logger.info(f"DEBUG: Part {i} has inline_data: {hasattr(part, 'inline_data') and part.inline_data is not None}")
+                logger.info(f"DEBUG: Part {i} has text: {hasattr(part, 'text') and part.text is not None}")
+                
                 # Process ADK Audio Output
                 if hasattr(part, 'inline_data') and part.inline_data:
+                    logger.info(f"DEBUG: Calling _process_audio_part for part {i}")
                     await self._process_audio_part(part)
                 
                 # Process ADK Text Output (Transcription)
                 if hasattr(part, 'text') and part.text:
+                    logger.info(f"DEBUG: Calling _process_text_part for part {i}")
                     await self._process_text_part(part)
                     
         except Exception as e:
@@ -369,36 +450,27 @@ class GeminiStreamingClient:
             part: Content part containing audio data
         """
         try:
-            if (part.inline_data.mime_type and
+            logger.info(f"DEBUG: Processing audio part - has inline_data: {hasattr(part, 'inline_data')}")
+            if hasattr(part, 'inline_data') and part.inline_data:
+                logger.info(f"DEBUG: inline_data mime_type: {getattr(part.inline_data, 'mime_type', 'None')}")
+                logger.info(f"DEBUG: inline_data has data: {hasattr(part.inline_data, 'data') and part.inline_data.data is not None}")
+                
+            if (hasattr(part, 'inline_data') and part.inline_data and
+                part.inline_data.mime_type and
                 part.inline_data.mime_type.startswith("audio/pcm") and
                 part.inline_data.data):
                 
                 pcm_24khz_audio = part.inline_data.data
-                logger.debug(f"Received ADK audio: {len(pcm_24khz_audio)} bytes at 24kHz")
+                logger.info(f"SUCCESS: Received ADK audio: {len(pcm_24khz_audio)} bytes at 24kHz")
                 
-                # Import audio processor
-                from app.audio_processing.utils import audio_processor
-                
-                # Convert 24kHz LPCM16 to 8kHz MuLaw for Twilio
-                # Step 1: Resample from 24kHz to 8kHz LPCM16
-                pcm_8khz_audio = audio_processor.resample_audio(
-                    pcm_24khz_audio,
-                    from_rate=24000,
-                    to_rate=8000,
-                    sample_width=2
-                )
-                logger.debug(f"Resampled audio to 8kHz: {len(pcm_8khz_audio)} bytes")
-                
-                # Step 2: Convert 8kHz LPCM16 to MuLaw
-                mulaw_audio = audio_processor.pcm_to_mulaw(pcm_8khz_audio)
-                logger.debug(f"Converted to MuLaw: {len(mulaw_audio)} bytes")
-                
-                # Step 3: Send to audio output callback if available
+                # Send raw 24kHz PCM audio to callback - let WebSocket handler do the conversion
                 if self._audio_output_callback:
-                    await self._audio_output_callback(mulaw_audio)
-                    logger.debug("Audio sent to output callback")
+                    await self._audio_output_callback(pcm_24khz_audio)
+                    logger.info("Raw 24kHz PCM audio sent to output callback")
                 else:
                     logger.warning("No audio output callback set")
+            else:
+                logger.info("DEBUG: Audio part does not meet criteria for processing")
                     
         except Exception as e:
             logger.error(f"Error processing audio part: {e}")
@@ -419,9 +491,11 @@ class GeminiStreamingClient:
                 # Send to text output callback if available
                 if self._text_output_callback:
                     await self._text_output_callback(text_data)
-                    logger.debug("Text sent to output callback")
+                    logger.info("Text sent to output callback")
                 else:
-                    logger.debug("No text output callback set")
+                    logger.info("No text output callback set")
+            else:
+                logger.info("DEBUG: Text part has empty text after strip")
                     
         except Exception as e:
             logger.error(f"Error processing text part: {e}")
