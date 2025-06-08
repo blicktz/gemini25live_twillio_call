@@ -55,7 +55,7 @@ async def health_check():
     }
 
 
-@app.websocket("/ws/media-stream")
+@app.websocket("/media-stream")
 async def websocket_media_stream(websocket: WebSocket):
     """WebSocket endpoint for Twilio media streams.
     

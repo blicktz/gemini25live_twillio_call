@@ -2,8 +2,8 @@
 
 import logging
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import Response
-from twilio.twiml.voice_response import VoiceResponse
+from fastapi.responses import Response, HTMLResponse
+from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from twilio.request_validator import RequestValidator
 from app.config import settings
 from app.core.models import TwilioWebhookRequest
@@ -120,34 +120,28 @@ async def handle_incoming_call(request: Request):
         # Start media stream to our WebSocket endpoint
         # The WebSocket URL should be accessible from Twilio's servers
         logger.info(f"Initial request.url.hostname: {request.url.hostname}, request.url.port: {request.url.port}")
-        websocket_url = f"wss://{request.url.hostname}:{request.url.port}/ws/media-stream"
+        websocket_url = f"wss://{request.url.hostname}/media-stream"
         logger.info(f"Intermediate websocket_url (before settings check): {websocket_url}")
         logger.info(f"Value of settings.twilio_webhook_url: {settings.twilio_webhook_url}")
-        if settings.twilio_webhook_url:
-            # Use configured webhook URL if available
-            logger.info(f"Using settings.twilio_webhook_url to construct websocket_url.")
-            websocket_url = settings.twilio_webhook_url.replace('http', 'ws') + "/ws/media-stream"
-        else:
-            logger.info(f"settings.twilio_webhook_url is not set. Using URL derived from request.")
-            # Ensure port is handled correctly for standard https (port 443)
-            port_str = f":{request.url.port}" if request.url.port else ""
-            websocket_url = f"wss://{request.url.hostname}{port_str}/ws/media-stream"
         
-        start = response.start()
-        start.stream(
-            url=websocket_url,
-            track='both_tracks'  # Capture both inbound and outbound audio
-        )
-        
-        logger.info(f"Generated TwiML for call {call_sid} with WebSocket URL: {websocket_url}")
-        
-        # Keep the call alive
-        response.pause(length=60)  # Pause for 60 seconds to keep call active
-        
+        connect = Connect()
+        connect.stream(url=websocket_url)
 
+        response.append(connect)
+
+        # start = response.start()
+        # start.stream(
+        #     url=websocket_url,
+        #     track='both_tracks'  # Capture both inbound and outbound audio
+        # )
+        
+        # logger.info(f"Generated TwiML for call {call_sid} with WebSocket URL: {websocket_url}")
+        
+        # # Keep the call alive
+        # response.pause(length=60)  # Pause for 60 seconds to keep call active
         
         # Return TwiML response
-        return Response(
+        return HTMLResponse(
             content=str(response),
             media_type="application/xml"
         )

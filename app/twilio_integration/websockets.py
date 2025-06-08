@@ -4,15 +4,13 @@ import json
 import logging
 import asyncio
 import time
-import wave
-import audioop
-import base64
 from typing import Dict, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState # ADDED IMPORT
 from app.config import settings
 from app.core.models import TwilioMediaMessage, TwilioOutboundMedia, CallSession
 from app.audio_processing.utils import audio_processor
+from app.gemini_integration.streaming import GeminiStreamingClient
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +24,12 @@ class TwilioMediaStreamHandler:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
         self.call_session: Optional[CallSession] = None
+        self.gemini_client: Optional[GeminiStreamingClient] = None
         self.stream_sid: Optional[str] = None
         self.is_active = False
+        # TODO: Add a timer or mechanism to detect end of user speech for signal_end_of_user_turn
+        self._user_speech_timer: Optional[asyncio.TimerHandle] = None
+        self._silence_threshold_sec = 1.0 # Example: 1 second of silence
         
         # Audio queue system for proper Twilio audio delivery
         self._audio_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -89,8 +91,13 @@ class TwilioMediaStreamHandler:
                 await self._handle_stream_stop(msg)
             elif msg.event == "mark":
                 # Handle mark acknowledgment from Twilio
+
                 mark_name = msg.mark.get('name', 'unknown') if isinstance(msg.mark, dict) else getattr(msg.mark, 'name', 'unknown')
                 logger.info(f"Twilio acknowledged audio chunk: {mark_name}")
+                # Check for special VAD marks
+                if mark_name == "user_finished_speaking":
+                    if self.gemini_client and self.gemini_client.is_active:
+                        await self.gemini_client.signal_end_of_user_turn()
 
             else:
                 logger.info(f"Received unknown event: {msg.event}")
@@ -127,17 +134,32 @@ class TwilioMediaStreamHandler:
             if call_sid:
                 active_sessions[call_sid] = self.call_session
             
-            # Start playing the sample audio file
-            if self.is_active:
-                logger.info(f"Initiating sample audio playback for call: {call_sid}")
-                asyncio.create_task(self._play_sample_audio())
-            else:
-                logger.warning("WebSocket connection became inactive before sample audio playback could start.")
-            
-            logger.info(f"Stream start handled for call: {call_sid}")
+            # Initialize Gemini streaming client (ADK-based)
+            self.gemini_client = GeminiStreamingClient()
+            self.gemini_client.set_callbacks(
+                audio_callback=self._send_audio_to_twilio,
+                text_callback=self._handle_gemini_text_response
+            )
+            # ADK-based client uses session_id instead of initial_prompt
+            # The system prompt is configured in the root_agent
+            await self.gemini_client.start_session(session_id=call_sid or self.stream_sid)
+            logger.info(f"ADK-based Gemini session started for call: {call_sid}")
 
         except Exception as e:
             logger.error(f"Error handling stream start: {e}", exc_info=True)
+            if self.gemini_client and self.gemini_client.is_active:
+                await self.gemini_client.stop_session()
+            self.gemini_client = None # Ensure it's cleared
+
+    def _reset_user_speech_timer(self):
+        if self._user_speech_timer:
+            self._user_speech_timer.cancel()
+        if self.gemini_client and self.gemini_client.is_active:
+            loop = asyncio.get_event_loop()
+            self._user_speech_timer = loop.call_later(
+                self._silence_threshold_sec,
+                lambda: asyncio.create_task(self.gemini_client.signal_end_of_user_turn())
+            )
 
     async def _handle_media_message(self, msg: TwilioMediaMessage):
         """Handle incoming audio media from Twilio.
@@ -146,15 +168,28 @@ class TwilioMediaStreamHandler:
             msg: Twilio media message containing audio data
         """
         try:
-            if not msg.media:
+            if not msg.media or not self.gemini_client or not self.gemini_client.is_active:
                 return
 
             audio_payload = msg.media.get('payload')
             if not audio_payload:
                 return
             
-            # Log incoming media for debugging purposes
-            logger.debug(f"Received media message with payload length: {len(audio_payload)}")
+            # self._reset_user_speech_timer() # Reset timer on receiving new audio
+
+            pcm_audio = audio_processor.process_twilio_to_gemini(
+                audio_payload,
+                input_rate=settings.input_sample_rate,
+                output_rate=settings.gemini_input_sample_rate
+            )
+            await self.gemini_client.send_audio_chunk(pcm_audio)
+
+            # NOT USED 
+            # For simplicity, let's signal end of turn after each chunk for now.
+            # This is not ideal for natural conversation but ensures Gemini responds.
+            # A better VAD or mark-based system is needed for production.
+            #await self.gemini_client.signal_end_of_user_turn()
+
 
         except Exception as e:
             logger.error(f"Error handling media message: {e}", exc_info=True)
@@ -168,17 +203,21 @@ class TwilioMediaStreamHandler:
         try:
             logger.info(f"Media stream stopped: {self.stream_sid}")
             self.is_active = False # Mark handler as inactive first
+            if self._user_speech_timer:
+                self._user_speech_timer.cancel()
+            if self.gemini_client:
+                await self.gemini_client.stop_session()
         except Exception as e:
             logger.error(f"Error handling stream stop: {e}", exc_info=True)
 
     async def _send_audio_to_twilio(self, audio_data: bytes):
         """Send audio data to Twilio with proper mark messages.
         
-        This is called when we have audio to send to Twilio.
+        This is called by the Gemini client when it has audio to send.
         Uses either queue-based or immediate delivery based on configuration.
         
         Args:
-            audio_data: PCM audio data (typically 24kHz)
+            audio_data: PCM audio data from Gemini (typically 24kHz)
         """
         try:
             logger.info(f"DEBUG: _send_audio_to_twilio called with {len(audio_data)} bytes")
@@ -201,7 +240,7 @@ class TwilioMediaStreamHandler:
         """Queue audio data for sending to Twilio with proper mark messages.
         
         Args:
-            audio_data: PCM audio data (typically 24kHz)
+            audio_data: PCM audio data from Gemini (typically 24kHz)
         """
         try:
             logger.info("Processing audio for Twilio (queue method)...")
@@ -248,7 +287,7 @@ class TwilioMediaStreamHandler:
         This method bypasses the queue system and sends audio directly.
         
         Args:
-            audio_data: PCM audio data (typically 24kHz)
+            audio_data: PCM audio data from Gemini (typically 24kHz)
         """
         try:
             if not self.is_active or not self.stream_sid or \
@@ -310,7 +349,7 @@ class TwilioMediaStreamHandler:
                     
                     # Check if WebSocket is still connected
                     if self.websocket and self.websocket.client_state == WebSocketState.CONNECTED:
-                        logger.info(f"DEBUG: Audio sender loop - send text - {message[:100]}")
+                        logger.debug(f"DEBUG: Audio sender loop - send text - {message}")
                         await self.websocket.send_text(message)
                     else:
                         logger.warning("WebSocket not connected, dropping audio message")
@@ -329,176 +368,21 @@ class TwilioMediaStreamHandler:
         finally:
             logger.info("Audio sender loop stopped")
 
-    async def _play_sample_audio(self):
-        """Load and play the sample audio file in 100ms chunks."""
+    async def _handle_gemini_text_response(self, text: str):
         try:
-            wav_path = "sample_audio/output.wav"  # Relative to project root
-            logger.info(f"Starting playback of sample audio: {wav_path}")
-
-            # First, try to open with wave module to get basic info
-            try:
-                with wave.open(wav_path, 'rb') as wf:
-                    source_wav_rate = wf.getframerate()
-                    source_wav_channels = wf.getnchannels()
-                    num_frames = wf.getnframes()
-                    logger.info(f"WAV file info: {source_wav_rate}Hz, {source_wav_channels} channels, {num_frames} frames")
-                    
-                    # Calculate bytes to read for 100ms chunk at 8kHz μ-law (1 byte per sample)
-                    bytes_per_100ms_chunk = int(source_wav_rate * 0.100)  # 0.100 seconds = 100ms
-                    
-                    total_frames_read = 0
-                    chunk_count = 0
-                    while total_frames_read < num_frames:
-                        if not self.is_active:
-                            logger.info("Stopping sample audio playback as handler is no longer active.")
-                            break
-
-                        frames_to_read = min(bytes_per_100ms_chunk, num_frames - total_frames_read)
-                        raw_frames = wf.readframes(frames_to_read)
-                        total_frames_read += frames_to_read
-
-                        if not raw_frames:  # End of file or error
-                            break
-
-                        # Since this is already μ-law at 8kHz mono, we can send it directly
-                        await self._send_mulaw_to_twilio(raw_frames)
-                        chunk_count += 1
-                        logger.debug(f"Queued chunk {chunk_count}: {len(raw_frames)} bytes of μ-law audio for Twilio.")
-                        
-                        # Yield control to allow other tasks to run, including the audio sender.
-                        await asyncio.sleep(0.01)
-
-                    logger.info(f"Finished processing and queueing sample audio: {wav_path} ({chunk_count} chunks)")
-                    
-            except wave.Error as e:
-                if "unknown format" in str(e):
-                    logger.info(f"WAV file appears to be μ-law format, reading as raw binary: {e}")
-                    # Read the file as raw binary and skip the WAV header
-                    await self._play_raw_mulaw_audio(wav_path)
-                else:
-                    raise
-
-        except FileNotFoundError:
-            logger.error(f"Sample audio file not found: {wav_path}")
+            call_id_info = self.call_session.call_sid if self.call_session else 'N/A'
+            logger.info(f"Received text from Gemini for call {call_id_info}: {text}")
         except Exception as e:
-            logger.error(f"Error in _play_sample_audio: {e}", exc_info=True)
-
-    async def _play_raw_mulaw_audio(self, wav_path: str):
-        """Play μ-law audio by reading raw binary data and skipping WAV header (first 10 seconds only)."""
-        try:
-            with open(wav_path, 'rb') as f:
-                # Skip WAV header (typically 44 bytes for standard WAV)
-                # We'll read the header to find the data chunk
-                header = f.read(44)
-                if len(header) < 44:
-                    logger.error("File too small to contain valid WAV header")
-                    return
-                
-                # Find the data chunk (this is a simplified approach)
-                # For μ-law files created by ffmpeg, the data usually starts at byte 44
-                audio_data = f.read()
-                
-                if not audio_data:
-                    logger.error("No audio data found in file")
-                    return
-                
-                # Limit to first 10 seconds (8kHz mono μ-law = 8000 bytes per second)
-                max_bytes = 8000 * 10  # 80,000 bytes for 10 seconds
-                if len(audio_data) > max_bytes:
-                    audio_data = audio_data[:max_bytes]
-                    logger.info(f"Limiting audio to first 10 seconds: {len(audio_data)} bytes")
-                else:
-                    logger.info(f"Reading raw μ-law data: {len(audio_data)} bytes")
-                
-                # Calculate bytes for 100ms chunks at 8kHz (800 bytes for 100ms)
-                bytes_per_100ms = 800  # 8000 Hz * 0.1 seconds * 1 byte per sample
-                
-                chunk_count = 0
-                offset = 0
-                while offset < len(audio_data):
-                    if not self.is_active:
-                        logger.info("Stopping sample audio playback as handler is no longer active.")
-                        break
-                    
-                    chunk_size = min(bytes_per_100ms, len(audio_data) - offset)
-                    chunk = audio_data[offset:offset + chunk_size]
-                    offset += chunk_size
-                    
-                    if not chunk:
-                        break
-                    
-                    await self._send_mulaw_to_twilio(chunk)
-                    chunk_count += 1
-                    logger.info(f"Queued raw chunk {chunk_count}: {len(chunk)} bytes of μ-law audio for Twilio.")
-                    
-                    # Yield control to allow other tasks to run
-                    await asyncio.sleep(0.01)
-                
-                logger.info(f"Finished processing raw μ-law audio: {wav_path} ({chunk_count} chunks)")
-                
-        except Exception as e:
-            logger.error(f"Error reading raw μ-law audio: {e}", exc_info=True)
-
-    async def _send_mulaw_to_twilio(self, mulaw_data: bytes):
-        """Send μ-law audio data directly to Twilio (bypassing PCM conversion)."""
-        try:
-            if not self.is_active or not self.stream_sid:
-                logger.warning("Cannot send audio to Twilio: Handler not active or stream_sid missing.")
-                return
-
-            # Convert μ-law bytes directly to base64 for Twilio
-            base64_mulaw = base64.b64encode(mulaw_data).decode('utf-8')
-            
-            # Generate unique chunk ID for mark message synchronization
-            chunk_id = f"mulaw_chunk_{int(time.time() * 1000)}_{len(mulaw_data)}"
-            
-            # Create media message
-            media_message = {
-                "event": "media",
-                "streamSid": self.stream_sid,
-                "media": {"payload": base64_mulaw}
-            }
-            
-            # Create mark message for synchronization
-            mark_message = {
-                "event": "mark",
-                "streamSid": self.stream_sid,
-                "mark": {"name": chunk_id}
-            }
-            
-            # Queue both messages for delivery
-            self._audio_queue.put_nowait(json.dumps(media_message))
-            self._audio_queue.put_nowait(json.dumps(mark_message))
-            
-            logger.debug(f"SUCCESS: μ-law audio and mark messages queued for Twilio (chunk: {chunk_id})")
-            
-        except Exception as e:
-            logger.error(f"Error sending μ-law audio to Twilio: {e}", exc_info=True)
+            logger.error(f"Error handling Gemini text response: {e}", exc_info=True)
 
     async def _cleanup(self):
         logger.info(f"Cleaning up WebSocket connection for stream: {self.stream_sid or 'N/A'}")
         self.is_active = False # Ensure inactive
-
-        # Wait for audio queue to be empty before cancelling the sender task
-        if self._audio_sender_task and not self._audio_sender_task.done():
-            try:
-                # Wait for the queue to be processed (with timeout to avoid hanging)
-                queue_empty_timeout = 6.0  # 6 seconds timeout
-                start_time = asyncio.get_event_loop().time()
-                
-                while not self._audio_queue.empty():
-                    if asyncio.get_event_loop().time() - start_time > queue_empty_timeout:
-                        logger.warning(f"Audio queue not empty after {queue_empty_timeout}s timeout, proceeding with cleanup")
-                        break
-                    await asyncio.sleep(0.1)  # Check every 100ms
-                
-                if self._audio_queue.empty():
-                    logger.info("Audio queue is empty, proceeding with sender task cleanup")
-                else:
-                    logger.warning(f"Audio queue still has {self._audio_queue.qsize()} items, proceeding with cleanup anyway")
-                    
-            except Exception as e:
-                logger.error(f"Error waiting for audio queue to empty: {e}")
+        
+        # Cancel user speech timer
+        if self._user_speech_timer:
+            self._user_speech_timer.cancel()
+            self._user_speech_timer = None
 
         # Cancel and cleanup audio sender task
         if self._audio_sender_task:
@@ -518,6 +402,11 @@ class TwilioMediaStreamHandler:
             logger.info("Audio queue cleared")
         except Exception as e:
             logger.error(f"Error clearing audio queue: {e}")
+
+        # Stop Gemini client
+        if self.gemini_client:
+            await self.gemini_client.stop_session()
+            self.gemini_client = None
         
         # Remove from active sessions
         if self.call_session and self.call_session.call_sid in active_sessions:
