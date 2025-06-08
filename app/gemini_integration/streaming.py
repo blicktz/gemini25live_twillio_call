@@ -303,7 +303,7 @@ class GeminiStreamingClient:
     async def _process_agent_events_loop(self):
         """
         Process events from ADK agent.
-        Phase 1: Basic loop structure (will be enhanced in Phase 4).
+        Phase 4: Enhanced to handle audio and text content from ADK.
         """
         logger.info("ADK agent events loop started")
         try:
@@ -315,30 +315,116 @@ class GeminiStreamingClient:
                 if not self.is_active:
                     break
 
-                # Phase 1: Log events for debugging
                 if event:
                     logger.debug(f"Received ADK event: {type(event)}")
                     
-                    # Log turn completion and interruption events
+                    # Handle turn completion and interruption events
                     if hasattr(event, 'turn_complete') and event.turn_complete:
                         logger.info("ADK: Turn complete")
                     
                     if hasattr(event, 'interrupted') and event.interrupted:
                         logger.info("ADK: Turn interrupted")
                     
-                    # TODO Phase 4: Process audio and text content
-                    # if event.content and event.content.parts:
-                    #     for part in event.content.parts:
-                    #         # Process audio output
-                    #         # Process text output
+                    # Phase 4: Process audio and text content
+                    if hasattr(event, 'content') and event.content and hasattr(event.content, 'parts') and event.content.parts:
+                        await self._process_event_content_parts(event.content.parts)
                     
         except asyncio.CancelledError:
             logger.info("ADK agent events loop cancelled")
+        except StopAsyncIteration:
+            logger.info("ADK live events stream closed")
         except Exception as e:
             logger.exception(f"Error in ADK agent events loop: {e}")
             self.is_active = False
         finally:
             logger.info("ADK agent events loop finished")
+
+    async def _process_event_content_parts(self, parts):
+        """
+        Process content parts from ADK events.
+        Phase 4: Handle both audio and text content.
+        
+        Args:
+            parts: List of content parts from ADK event
+        """
+        try:
+            for part in parts:
+                # Process ADK Audio Output
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    await self._process_audio_part(part)
+                
+                # Process ADK Text Output (Transcription)
+                if hasattr(part, 'text') and part.text:
+                    await self._process_text_part(part)
+                    
+        except Exception as e:
+            logger.error(f"Error processing event content parts: {e}")
+
+    async def _process_audio_part(self, part):
+        """
+        Process audio content from ADK.
+        Phase 4: Convert 24kHz LPCM16 to 8kHz MuLaw for Twilio.
+        
+        Args:
+            part: Content part containing audio data
+        """
+        try:
+            if (part.inline_data.mime_type and
+                part.inline_data.mime_type.startswith("audio/pcm") and
+                part.inline_data.data):
+                
+                pcm_24khz_audio = part.inline_data.data
+                logger.debug(f"Received ADK audio: {len(pcm_24khz_audio)} bytes at 24kHz")
+                
+                # Import audio processor
+                from app.audio_processing.utils import audio_processor
+                
+                # Convert 24kHz LPCM16 to 8kHz MuLaw for Twilio
+                # Step 1: Resample from 24kHz to 8kHz LPCM16
+                pcm_8khz_audio = audio_processor.resample_audio(
+                    pcm_24khz_audio,
+                    from_rate=24000,
+                    to_rate=8000,
+                    sample_width=2
+                )
+                logger.debug(f"Resampled audio to 8kHz: {len(pcm_8khz_audio)} bytes")
+                
+                # Step 2: Convert 8kHz LPCM16 to MuLaw
+                mulaw_audio = audio_processor.pcm_to_mulaw(pcm_8khz_audio)
+                logger.debug(f"Converted to MuLaw: {len(mulaw_audio)} bytes")
+                
+                # Step 3: Send to audio output callback if available
+                if self._audio_output_callback:
+                    await self._audio_output_callback(mulaw_audio)
+                    logger.debug("Audio sent to output callback")
+                else:
+                    logger.warning("No audio output callback set")
+                    
+        except Exception as e:
+            logger.error(f"Error processing audio part: {e}")
+
+    async def _process_text_part(self, part):
+        """
+        Process text content from ADK.
+        Phase 4: Handle transcribed text for logging.
+        
+        Args:
+            part: Content part containing text data
+        """
+        try:
+            text_data = part.text.strip()
+            if text_data:
+                logger.info(f"ADK text output: {text_data}")
+                
+                # Send to text output callback if available
+                if self._text_output_callback:
+                    await self._text_output_callback(text_data)
+                    logger.debug("Text sent to output callback")
+                else:
+                    logger.debug("No text output callback set")
+                    
+        except Exception as e:
+            logger.error(f"Error processing text part: {e}")
 
     # Legacy methods for compatibility (will be removed in later phases)
     async def signal_end_of_user_turn(self):
