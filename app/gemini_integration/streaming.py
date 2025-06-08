@@ -159,7 +159,7 @@ class GeminiStreamingClient:
                 "input_audio_transcription": {}   # Enable input audio transcription for VAD
             }
             run_config = RunConfig(**run_config_dict)
-            logger.info(f"DEBUG: RunConfig created with:")
+            logger.debug(f"DEBUG: RunConfig created with:")
             logger.info(f"  - Voice: {settings.gemini_voice_name or 'Puck'}")
             logger.info(f"  - Response modalities: {run_config_dict['response_modalities']}")
             logger.info(f"  - Speech config: {speech_config}")
@@ -363,42 +363,42 @@ class GeminiStreamingClient:
 
                 if event:
                     # Enhanced logging to debug audio issues
-                    logger.info(f"DEBUG: Received ADK event type: {type(event)}")
+                    logger.debug(f"DEBUG: Received ADK event type: {type(event)}")
                     
                     # Log event attributes for debugging
                     if hasattr(event, '__dict__'):
-                        logger.info(f"DEBUG: Event attributes: {list(event.__dict__.keys())}")
+                        logger.debug(f"DEBUG: Event attributes: {list(event.__dict__.keys())}")
                     
                     # Check if this is a partial or complete event (important for audio)
                     if hasattr(event, 'partial'):
-                        logger.info(f"DEBUG: Event is partial: {event.partial}")
+                        logger.debug(f"DEBUG: Event is partial: {event.partial}")
                     
                     # Handle turn completion and interruption events
                     if hasattr(event, 'turn_complete') and event.turn_complete:
-                        logger.info("ADK: Turn complete")
+                        logger.debug("ADK: Turn complete")
                     
                     if hasattr(event, 'interrupted') and event.interrupted:
-                        logger.info("ADK: Turn interrupted")
+                        logger.debug("ADK: Turn interrupted")
                     
                     # Enhanced content processing with detailed logging
                     if hasattr(event, 'content') and event.content:
-                        logger.info(f"DEBUG: Event has content of type: {type(event.content)}")
+                        logger.debug(f"DEBUG: Event has content of type: {type(event.content)}")
                         if hasattr(event.content, 'parts') and event.content.parts:
-                            logger.info(f"DEBUG: Content has {len(event.content.parts)} parts")
+                            logger.debug(f"DEBUG: Content has {len(event.content.parts)} parts")
                             for i, part in enumerate(event.content.parts):
-                                logger.info(f"DEBUG: Part {i} type: {type(part)}")
+                                logger.debug(f"DEBUG: Part {i} type: {type(part)}")
                                 if hasattr(part, 'inline_data') and part.inline_data:
-                                    logger.info(f"DEBUG: Part {i} has inline_data with mime_type: {getattr(part.inline_data, 'mime_type', 'None')}")
+                                    logger.debug(f"DEBUG: Part {i} has inline_data with mime_type: {getattr(part.inline_data, 'mime_type', 'None')}")
                                     if hasattr(part.inline_data, 'data'):
                                         data_len = len(part.inline_data.data) if part.inline_data.data else 0
-                                        logger.info(f"DEBUG: Part {i} inline_data has {data_len} bytes of data")
+                                        logger.debug(f"DEBUG: Part {i} inline_data has {data_len} bytes of data")
                                 if hasattr(part, 'text') and part.text:
-                                    logger.info(f"DEBUG: Part {i} has text: {part.text[:50]}...")
+                                    logger.debug(f"DEBUG: Part {i} has text: {part.text[:50]}...")
                             await self._process_event_content_parts(event.content.parts, event)
                         else:
-                            logger.info("DEBUG: Content has no parts or parts is empty")
+                            logger.debug("DEBUG: Content has no parts or parts is empty")
                     else:
-                        logger.info("DEBUG: Event has no content")
+                        logger.debug("DEBUG: Event has no content")
                     
         except asyncio.CancelledError:
             logger.info("ADK agent events loop cancelled")
@@ -421,21 +421,21 @@ class GeminiStreamingClient:
         """
         try:
             event_partial = getattr(event, 'partial', None) if event else None
-            logger.info(f"DEBUG: Processing {len(parts)} parts, event partial: {event_partial}")
+            logger.debug(f"DEBUG: Processing {len(parts)} parts, event partial: {event_partial}")
             
             for i, part in enumerate(parts):
-                logger.info(f"DEBUG: Processing part {i} of {len(parts)}")
-                logger.info(f"DEBUG: Part {i} has inline_data: {hasattr(part, 'inline_data') and part.inline_data is not None}")
-                logger.info(f"DEBUG: Part {i} has text: {hasattr(part, 'text') and part.text is not None}")
+                logger.debug(f"DEBUG: Processing part {i} of {len(parts)}")
+                logger.debug(f"DEBUG: Part {i} has inline_data: {hasattr(part, 'inline_data') and part.inline_data is not None}")
+                logger.debug(f"DEBUG: Part {i} has text: {hasattr(part, 'text') and part.text is not None}")
                 
                 # Process ADK Audio Output
                 if hasattr(part, 'inline_data') and part.inline_data:
-                    logger.info(f"DEBUG: Calling _process_audio_part for part {i}")
+                    logger.debug(f"DEBUG: Calling _process_audio_part for part {i}")
                     await self._process_audio_part(part)
                 
                 # Process ADK Text Output (Transcription)
                 if hasattr(part, 'text') and part.text:
-                    logger.info(f"DEBUG: Calling _process_text_part for part {i}")
+                    logger.debug(f"DEBUG: Calling _process_text_part for part {i}")
                     await self._process_text_part(part)
                     
         except Exception as e:
@@ -450,10 +450,10 @@ class GeminiStreamingClient:
             part: Content part containing audio data
         """
         try:
-            logger.info(f"DEBUG: Processing audio part - has inline_data: {hasattr(part, 'inline_data')}")
+            logger.info(f"Processing audio part - has inline_data: {hasattr(part, 'inline_data')}")
             if hasattr(part, 'inline_data') and part.inline_data:
-                logger.info(f"DEBUG: inline_data mime_type: {getattr(part.inline_data, 'mime_type', 'None')}")
-                logger.info(f"DEBUG: inline_data has data: {hasattr(part.inline_data, 'data') and part.inline_data.data is not None}")
+                logger.debug(f"DEBUG: inline_data mime_type: {getattr(part.inline_data, 'mime_type', 'None')}")
+                logger.debug(f"DEBUG: inline_data has data: {hasattr(part.inline_data, 'data') and part.inline_data.data is not None}")
                 
             if (hasattr(part, 'inline_data') and part.inline_data and
                 part.inline_data.mime_type and
@@ -470,7 +470,7 @@ class GeminiStreamingClient:
                 else:
                     logger.warning("No audio output callback set")
             else:
-                logger.info("DEBUG: Audio part does not meet criteria for processing")
+                logger.debug("DEBUG: Audio part does not meet criteria for processing")
                     
         except Exception as e:
             logger.error(f"Error processing audio part: {e}")
@@ -495,7 +495,7 @@ class GeminiStreamingClient:
                 else:
                     logger.info("No text output callback set")
             else:
-                logger.info("DEBUG: Text part has empty text after strip")
+                logger.debug("DEBUG: Text part has empty text after strip")
                     
         except Exception as e:
             logger.error(f"Error processing text part: {e}")

@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     output_sample_rate: int = 8000  # Twilio output sample rate
     save_debug_audio: bool = True  # Save audio files for debugging
     
+    # Twilio Audio Delivery Configuration
+    use_twilio_audio_queue: bool = True  # Use queue-based audio delivery (recommended)
+    
     # AI Configuration
     system_prompt: str = "You are a friendly and helpful AI assistant answering phone calls. Keep your responses conversational, concise, and natural. Respond as if you're having a real-time voice conversation."
     
