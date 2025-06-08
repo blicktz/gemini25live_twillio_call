@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     gemini_input_sample_rate: int = 16000  # Gemini expected input
     gemini_output_sample_rate: int = 24000  # Gemini output sample rate
     output_sample_rate: int = 8000  # Twilio output sample rate
+    save_debug_audio: bool = True  # Save audio files for debugging
     
     # AI Configuration
     system_prompt: str = "You are a friendly and helpful AI assistant answering phone calls. Keep your responses conversational, concise, and natural. Respond as if you're having a real-time voice conversation."

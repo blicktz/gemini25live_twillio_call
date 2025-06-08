@@ -254,3 +254,4 @@ ngrok.exe
 
 credentials*.json 
 
+*.wav

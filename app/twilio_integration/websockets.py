@@ -219,7 +219,8 @@ class TwilioMediaStreamHandler:
             base64_mulaw = audio_processor.process_gemini_to_twilio(
                 audio_data,
                 input_rate=settings.gemini_output_sample_rate,
-                output_rate=settings.output_sample_rate
+                output_rate=settings.output_sample_rate,
+                save_debug_audio=settings.save_debug_audio
             )
             
             logger.info(f"DEBUG: Processed audio - base64_mulaw length: {len(base64_mulaw)}")
