@@ -115,7 +115,7 @@ async def handle_incoming_call(request: Request):
         response = VoiceResponse()
         
         # Add a brief greeting
-        response.say("Hello!", voice='alice')
+        response.say("Hello! Please wait while we connect your call to the A. I. voice assistant.", voice='alice')
         
         # Start media stream to our WebSocket endpoint
         # The WebSocket URL should be accessible from Twilio's servers
