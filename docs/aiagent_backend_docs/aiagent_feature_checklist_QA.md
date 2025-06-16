@@ -57,14 +57,14 @@
     *   **Question:** How will "blocking" be implemented? Will the call be immediately disconnected, or will a message be played?
     *   **Answer:** For 1-800 callers, the AI agent will not pick up the call if the caller ID is identified as a 1-800 number by Twilio before the call is answered.
     *   **Question:** Will there be an option for the SMB owner to whitelist specific 1-800 numbers if needed (e.g., legitimate suppliers)?
-    *   **Answer:** (Awaiting clarification)
+    *   **Answer:** No whitelist for 1-800 numbers for now.
 *   "must be able to detect sales conversation and hang-up"
     *   **Question:** This is a complex AI task. What are the key indicators or keywords that will be used to "detect a sales conversation"? How will the accuracy of this detection be measured and improved over time?
     *   **Answer:** The detection of sales conversations will be delegated to the AI model's capabilities, guided by specific instructions within the system prompt. The definition of "key indicators" will be part of this prompt engineering.
     *   **Question:** What message, if any, will be played before hanging up on a detected sales call?
-    *   **Answer:** (Awaiting clarification)
+    *   **Answer:** No specific message will be played. The AI model will be instructed via the system prompt to interrupt the conversation if it detects a sales call, politely refuse any offers, and then hang up immediately.
     *   **Question:** Is there a risk of false positives (flagging legitimate calls as sales)? How will this be mitigated?
-    *   **Answer:** (Awaiting clarification, though mitigation would likely involve refining the system prompt based on observed performance.)
+    *   **Answer:** The system will aim for almost 100% certainty before classifying a call as a sales call and hanging up to minimize false positives. This will be managed through prompt engineering.
 
 **Agent Customization - FAQ:**
 *   "must be able to take a list of up to 20 FAQs, and answer caller accordingly"
@@ -83,13 +83,82 @@
 **Logging (New Section from Checklist):**
 *   Requirement: "must use structured logging"
     *   **Question:** What specific format or schema is required for structured logging (e.g., JSON logs)? Are there preferred logging libraries or standards to adhere to?
+    *   **Answer:** Standard, state-of-the-art logging practices will be followed. Specific libraries or detailed schema are not defined yet, but best practices will be used.
 *   Requirement: "must log all errors"
     *   **Question:** What level of detail is required for error logs (e.g., stack traces, request context, user identifiers if applicable)?
+    *   **Answer:** (Covered by "log all available info" and "best practices" but specific fields for error context can be further defined if needed during development).
 *   Requirement: "must log all incoming calls information whether we pick it up or not"
     *   **Question:** What specific information fields about incoming calls need to be logged (e.g., timestamp, caller ID, Twilio call SID, reason for not picking up if applicable)?
+    *   **Answer:** All available information from Twilio for the calls will be logged. Reasons for not picking up will be defined and logged.
     *   **Question:** Where will these logs be stored or sent (e.g., console output, file, a log management service like Google Cloud Logging)?
+    *   **Answer:** Standard logging will be used; no specific redirection or log management service is defined for now.
 
-These questions are designed to flesh out the details needed to write a comprehensive PRD. Addressing them will ensure that the development team has a clear and unambiguous set of requirements.
+**API Schema Confirmation - Call Logs:**
+*   User Statement: "what we have here is the complete api docs. if things are missing, please document them, and we need to provide to the webbackend team to implement"
+    *   **Note:** This implies that if the current `CallLogCreate` schema in <mcfile path="docs/web_backend_docs/apidoc/call_logs.json" name="call_logs.json"></mcfile> is missing fields required by the AI agent (e.g., `transcription_text` if it's not already there, or specific fields for reasons for not picking up a call), these will need to be documented as requirements for the web backend team.
 
-What are your thoughts on these? Would you like to dive deeper into any specific area?
+**Authentication (New Requirement from Checklist):**
+*   Requirement: "when receiving a incoming call, before pick-up the call, the agent must verify the 'to' phone number by querying the webbakend api whether the 'to' phone number belongs to a customer, and the customer has enough credits (free or paid minutes of calls) to use the AI agent"
+    *   **Question:** Which specific web backend API endpoint will be used for this pre-call verification (checking 'to' number and customer credits)?
+    *   **Answer:** An API endpoint for this is currently missing. A proposal will be made.
+    *   **Proposal for Pre-call Verification API:**
+        *   **Endpoint Location:** Consider adding to `businesses.json` as it pertains to customer status and credits, which are business-centric.
+        *   **Proposed Endpoint:** `POST /api/v1/businesses/verify-call-reception`
+        *   **Request Body Schema:**
+            ```json
+            {
+              "to_phone_number": "string (E.164 format)",
+              "from_phone_number": "string (E.164 format, optional, for context/logging)"
+            }
+            ```
+        *   **Response Body Schema (Success 200 OK):**
+            ```json
+            {
+              "can_receive_call": "boolean",
+              "reason_code": "string (enum: OK, NOT_CUSTOMER, INSUFFICIENT_CREDITS, INTERNAL_NUMBER, API_ERROR, CACHE_USED_API_UNAVAILABLE, CACHE_MISS_API_UNAVAILABLE)",
+              "reason_message": "string (human-readable explanation)",
+              "customer_id": "string (optional, if 'to_phone_number' is a customer)",
+              "current_credit_balance": "number (optional, if applicable and user has permission to see)"
+            }
+            ```
+        *   **Rationale:** This structure provides a clear go/no-go signal (`can_receive_call`) and a `reason_code` for detailed logic and logging by the AI agent.
+
+    *   **Question:** What specific data fields will this API endpoint expect in the request from the AI agent (e.g., just the 'to' phone number)? and What specific data fields will this API endpoint return in the response (e.g., boolean for 'belongs_to_customer', boolean for 'has_sufficient_credits', current_credit_balance)?
+    *   **Answer:** (Covered by the API proposal above). 
+
+    *   **Question:** What is the expected behavior if the web backend API is unavailable or returns an error during this pre-call check? Will the call be rejected, or is there a fallback?
+    *   **Answer:** If the web backend API is unavailable or returns an error, the AI agent will attempt to use a local cache of previous verification results. This cache will have a configurable TTL (e.g., 24 hours). If the 'to' number is not in the cache or the cache entry has expired, the call will not be picked up.
+    *   **Further Question (Cache):** How will the TTL for this local cache be configured (e.g., environment variable in the AI agent service)?
+    *   **Answer (Cache TTL):** The TTL for the local cache will be configured via local environment variables in the AI agent service.
+
+    *   **Question:** How will the AI agent handle the call if the API indicates the 'to' number does not belong to a customer, or the customer has insufficient credits? (e.g., reject the call, play a specific message).
+    *   **Answer:** The handling will be as follows:
+        1.  **'to' number does not belong to a customer (`reason_code: NOT_CUSTOMER`):** The AI agent will not pick up the call. This will be logged.
+        2.  **'to' number belongs to a customer, but insufficient credits (`reason_code: INSUFFICIENT_CREDITS`):** The AI agent will not pick up the call. A notification will be posted to the web backend. This will be logged.
+        3.  **'to' number is the Twilio account's own number (`reason_code: INTERNAL_NUMBER`):** The AI agent will pick up the call. The AI will attempt to determine the caller's intent, and the caller's number will be logged for further investigation.
+    *   **Proposal for Insufficient Credits Notification API:**
+        *   **Endpoint Location:** Consider adding to `businesses.json` or a new `notifications.json`.
+        *   **Proposed Endpoint:** `POST /api/v1/businesses/notify-event` (more generic for future use)
+        *   **Request Body Schema:**
+            ```json
+            {
+              "event_type": "string (enum: INSUFFICIENT_CREDITS_CALL_ATTEMPT, ...)",
+              "event_timestamp": "string (ISO 8601 datetime)",
+              "details": {
+                "customer_phone_number": "string (E.164 format of the 'to' number)",
+                "attempted_caller_phone_number": "string (E.164 format, the 'from' number)"
+                // other relevant details based on event_type
+              }
+            }
+            ```
+        *   **Response Body Schema (Success 202 Accepted):**
+            ```json
+            {
+              "status": "string", // e.g., "NotificationQueued"
+              "message_id": "string (optional, for tracking)"
+            }
+            ```
+    *   **Further Question (Internal Number Handling):** For scenario 3 (internal Twilio number), what specific behavior or script should the AI agent follow after picking up the call? (e.g., standard greeting then open-ended question, or a specific message like "This number is for automated services, how can I direct your query?").
+    *   **Answer (Internal Number Handling):** The AI agent will use a standard greeting with open-ended questions.
+
         

@@ -8,7 +8,8 @@
 - must not make any out-going calls from the AI agent, it should only answer incoming calls
 
 ## Authentication
-- must be able authenticate with webbackend to get information
+- must be able authenticate itself with webbackend to get information
+- when receiving a incoming call, before pick-up the call, the agent must verify the 'to' phone number by querying the webbakend api whether the 'to' phone number belongs to a customer, and the customer has enough credits (free or paid minutes of calls) to use the AI agent
 
 ## Telephony interaction
 - must be able to pull the call recording for the call from twilio, and save it to a permanent storage, then post the link to the webbackend when the call is over
