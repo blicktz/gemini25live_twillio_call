@@ -1,0 +1,965 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent - Call Logs - Billing",
+    "description": "Billing endpoints for AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent - Call Logs - Billing",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/billing/products-prices": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get Products And Prices",
+        "description": "List available subscription products and their prices.",
+        "operationId": "get_products_and_prices_api_v1_billing_products_prices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only show active products/prices",
+              "default": true,
+              "title": "Active Only"
+            },
+            "description": "Only show active products/prices"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductWithPrices"
+                  },
+                  "title": "Response Get Products And Prices Api V1 Billing Products Prices Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/create-checkout-session": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Create Checkout Session",
+        "description": "Create a Stripe Checkout session for a new subscription.",
+        "operationId": "create_checkout_session_api_v1_billing_create_checkout_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCheckoutSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateCheckoutSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/create-portal-session": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Create Portal Session",
+        "description": "Create a Stripe Customer Portal session to manage existing subscription.",
+        "operationId": "create_portal_session_api_v1_billing_create_portal_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePortalSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePortalSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/subscription": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get User Subscription",
+        "description": "View current user's active subscription details with usage information.",
+        "operationId": "get_user_subscription_api_v1_billing_subscription_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get User Subscription Api V1 Billing Subscription Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/usage": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get User Usage",
+        "description": "Get current user's usage information for the current billing period.",
+        "operationId": "get_user_usage_api_v1_billing_usage_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/UserUsageInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get User Usage Api V1 Billing Usage Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/usage/check-limit": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Check Usage Limit",
+        "description": "Check if user can use additional minutes without exceeding limits.",
+        "operationId": "check_usage_limit_api_v1_billing_usage_check_limit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageLimitCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimitCheckResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/invoices": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get User Invoices",
+        "description": "List user's invoices from Stripe with pagination.",
+        "operationId": "get_user_invoices_api_v1_billing_invoices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Items per page",
+              "default": 10,
+              "title": "Size"
+            },
+            "description": "Items per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedInvoices"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sync-products": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Sync Stripe Products",
+        "description": "Sync products and prices from Stripe to local database.\nAdmin only endpoint.",
+        "operationId": "sync_stripe_products_api_v1_billing_sync_products_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Sync Stripe Products Api V1 Billing Sync Products Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateCheckoutSessionRequest": {
+        "properties": {
+          "price_id": {
+            "type": "string",
+            "title": "Price Id",
+            "description": "Stripe Price ID"
+          },
+          "success_url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Success Url",
+            "description": "URL to redirect on successful payment"
+          },
+          "cancel_url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Cancel Url",
+            "description": "URL to redirect on cancelled payment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "price_id",
+          "success_url",
+          "cancel_url"
+        ],
+        "title": "CreateCheckoutSessionRequest",
+        "description": "Request schema for creating Stripe checkout session."
+      },
+      "CreateCheckoutSessionResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Stripe checkout session ID"
+          },
+          "checkout_url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Checkout Url",
+            "description": "URL to Stripe checkout page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "checkout_url"
+        ],
+        "title": "CreateCheckoutSessionResponse",
+        "description": "Response schema for creating Stripe checkout session."
+      },
+      "CreatePortalSessionRequest": {
+        "properties": {
+          "return_url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Return Url",
+            "description": "URL to return to after portal session"
+          }
+        },
+        "type": "object",
+        "required": [
+          "return_url"
+        ],
+        "title": "CreatePortalSessionRequest",
+        "description": "Request schema for creating Stripe customer portal session."
+      },
+      "CreatePortalSessionResponse": {
+        "properties": {
+          "portal_url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Portal Url",
+            "description": "URL to Stripe customer portal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "portal_url"
+        ],
+        "title": "CreatePortalSessionResponse",
+        "description": "Response schema for creating Stripe customer portal session."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Invoice": {
+        "properties": {
+          "stripe_invoice_id": {
+            "type": "string",
+            "title": "Stripe Invoice Id"
+          },
+          "stripe_subscription_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stripe Subscription Id"
+          },
+          "amount_paid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Paid"
+          },
+          "amount_due": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Due"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvoiceStatus"
+          },
+          "hosted_invoice_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hosted Invoice Url"
+          },
+          "invoice_pdf_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Pdf Url"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stripe_invoice_id",
+          "currency",
+          "status",
+          "id",
+          "user_id",
+          "created_at"
+        ],
+        "title": "Invoice",
+        "description": "Schema for invoice response."
+      },
+      "InvoiceStatus": {
+        "type": "string",
+        "enum": [
+          "paid",
+          "open",
+          "void",
+          "uncollectible",
+          "draft"
+        ],
+        "title": "InvoiceStatus",
+        "description": "Enumeration for invoice status."
+      },
+      "PaginatedInvoices": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size",
+          "pages"
+        ],
+        "title": "PaginatedInvoices",
+        "description": "Schema for paginated invoices response."
+      },
+      "Price": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "stripe_price_id": {
+            "type": "string",
+            "title": "Stripe Price Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/PriceType"
+          },
+          "unit_amount": {
+            "type": "integer",
+            "title": "Unit Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "recurring_interval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecurringInterval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recurring_interval_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurring Interval Count"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "stripe_price_id",
+          "product_id",
+          "type",
+          "unit_amount",
+          "currency",
+          "is_active"
+        ],
+        "title": "Price",
+        "description": "Schema for price response."
+      },
+      "PriceType": {
+        "type": "string",
+        "enum": [
+          "one_time",
+          "recurring"
+        ],
+        "title": "PriceType",
+        "description": "Enumeration for price types."
+      },
+      "Product": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "stripe_product_id": {
+            "type": "string",
+            "title": "Stripe Product Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "stripe_product_id",
+          "name",
+          "is_active"
+        ],
+        "title": "Product",
+        "description": "Schema for product response."
+      },
+      "ProductWithPrices": {
+        "properties": {
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/Price"
+            },
+            "type": "array",
+            "title": "Prices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product",
+          "prices"
+        ],
+        "title": "ProductWithPrices",
+        "description": "Schema for product with associated prices."
+      },
+      "RecurringInterval": {
+        "type": "string",
+        "enum": [
+          "day",
+          "week",
+          "month",
+          "year"
+        ],
+        "title": "RecurringInterval",
+        "description": "Enumeration for recurring intervals."
+      },
+      "UsageLimitCheckRequest": {
+        "properties": {
+          "minutes_requested": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Minutes Requested",
+            "description": "Minutes to check availability for"
+          }
+        },
+        "type": "object",
+        "required": [
+          "minutes_requested"
+        ],
+        "title": "UsageLimitCheckRequest",
+        "description": "Request schema for checking usage limits."
+      },
+      "UsageLimitCheckResponse": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "minutes_requested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Requested"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed"
+        ],
+        "title": "UsageLimitCheckResponse",
+        "description": "Response schema for checking usage limits."
+      },
+      "UserUsageInfo": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "current_plan": {
+            "type": "string",
+            "title": "Current Plan"
+          },
+          "plan_limit": {
+            "type": "string",
+            "title": "Plan Limit"
+          },
+          "minutes_used": {
+            "type": "string",
+            "title": "Minutes Used"
+          },
+          "remaining_minutes": {
+            "type": "string",
+            "title": "Remaining Minutes"
+          },
+          "billing_period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Billing Period Start"
+          },
+          "billing_period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Billing Period End"
+          },
+          "is_trial": {
+            "type": "boolean",
+            "title": "Is Trial",
+            "default": false
+          },
+          "has_overage": {
+            "type": "boolean",
+            "title": "Has Overage",
+            "default": false
+          },
+          "overage_minutes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overage Minutes"
+          },
+          "overage_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overage Cost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "current_plan",
+          "plan_limit",
+          "minutes_used",
+          "remaining_minutes",
+          "billing_period_start",
+          "billing_period_end"
+        ],
+        "title": "UserUsageInfo",
+        "description": "Schema for user usage information."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

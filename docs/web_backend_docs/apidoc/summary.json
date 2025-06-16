@@ -1,0 +1,60 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent - Call Logs - Billing - Webhooks - Internal - Untagged - All Groups Summary",
+    "description": "Summary of all available API groups. See individual files for detailed endpoints.",
+    "version": "0.1.0"
+  },
+  "x-api-groups": {
+    "/health": {
+      "description": "Health endpoints - see health.json",
+      "endpoints_count": 3,
+      "file_reference": "health.json"
+    },
+    "/authentication": {
+      "description": "Authentication endpoints - see authentication.json",
+      "endpoints_count": 7,
+      "file_reference": "authentication.json"
+    },
+    "/users": {
+      "description": "Users endpoints - see users.json",
+      "endpoints_count": 2,
+      "file_reference": "users.json"
+    },
+    "/businesses": {
+      "description": "Businesses endpoints - see businesses.json",
+      "endpoints_count": 7,
+      "file_reference": "businesses.json"
+    },
+    "/ai_agent": {
+      "description": "AI Agent endpoints - see ai_agent.json",
+      "endpoints_count": 4,
+      "file_reference": "ai_agent.json"
+    },
+    "/call_logs": {
+      "description": "Call Logs endpoints - see call_logs.json",
+      "endpoints_count": 3,
+      "file_reference": "call_logs.json"
+    },
+    "/billing": {
+      "description": "Billing endpoints - see billing.json",
+      "endpoints_count": 8,
+      "file_reference": "billing.json"
+    },
+    "/webhooks": {
+      "description": "Webhooks endpoints - see webhooks.json",
+      "endpoints_count": 2,
+      "file_reference": "webhooks.json"
+    },
+    "/internal": {
+      "description": "Internal endpoints - see internal.json",
+      "endpoints_count": 5,
+      "file_reference": "internal.json"
+    },
+    "/untagged": {
+      "description": "Untagged endpoints - see untagged.json",
+      "endpoints_count": 3,
+      "file_reference": "untagged.json"
+    }
+  }
+}

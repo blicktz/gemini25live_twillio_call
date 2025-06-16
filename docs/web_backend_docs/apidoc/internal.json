@@ -1,0 +1,691 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent - Call Logs - Billing - Webhooks - Internal",
+    "description": "Internal endpoints for AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent - Call Logs - Billing - Webhooks - Internal",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/internal/usage/record": {
+      "post": {
+        "tags": [
+          "Internal"
+        ],
+        "summary": "Record Usage",
+        "description": "Record usage data from the telephony backend.\nThis endpoint now properly tracks usage for billing and enforcement.",
+        "operationId": "record_usage_api_v1_internal_usage_record_post",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageRecordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/calls/log": {
+      "post": {
+        "tags": [
+          "Internal"
+        ],
+        "summary": "Create Call Log",
+        "description": "Create a call log entry from the telephony backend.",
+        "operationId": "create_call_log_api_v1_internal_calls_log_post",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallLogCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Create Call Log Api V1 Internal Calls Log Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/calls/{call_log_id}": {
+      "put": {
+        "tags": [
+          "Internal"
+        ],
+        "summary": "Update Call Log",
+        "description": "Update a call log entry from the telephony backend.",
+        "operationId": "update_call_log_api_v1_internal_calls__call_log_id__put",
+        "parameters": [
+          {
+            "name": "call_log_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Log Id"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallLogUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Update Call Log Api V1 Internal Calls  Call Log Id  Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/calls/{call_log_id}/transcript": {
+      "post": {
+        "tags": [
+          "Internal"
+        ],
+        "summary": "Add Call Transcript",
+        "description": "Add transcript and summary to a call log.",
+        "operationId": "add_call_transcript_api_v1_internal_calls__call_log_id__transcript_post",
+        "parameters": [
+          {
+            "name": "call_log_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Log Id"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Transcript Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Add Call Transcript Api V1 Internal Calls  Call Log Id  Transcript Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/health": {
+      "get": {
+        "tags": [
+          "Internal"
+        ],
+        "summary": "Internal Health Check",
+        "description": "Health check endpoint for internal services.",
+        "operationId": "internal_health_check_api_v1_internal_health_get",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Internal Health Check Api V1 Internal Health Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CallLogAnswerCreate": {
+        "properties": {
+          "question_asked": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Question Asked",
+            "description": "The question that was asked"
+          },
+          "answer_provided": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Provided",
+            "description": "The answer provided by the caller"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_asked"
+        ],
+        "title": "CallLogAnswerCreate",
+        "description": "Schema for creating call log answers."
+      },
+      "CallLogCreate": {
+        "properties": {
+          "caller_phone_number": {
+            "type": "string",
+            "maxLength": 30,
+            "title": "Caller Phone Number",
+            "description": "Caller's phone number"
+          },
+          "call_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Call Start Time",
+            "description": "When the call started"
+          },
+          "call_end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call End Time",
+            "description": "When the call ended"
+          },
+          "call_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Duration Seconds",
+            "description": "Duration of the call in seconds"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus",
+            "description": "Status of the call"
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary",
+            "description": "AI-generated summary of the call"
+          },
+          "full_transcript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Transcript",
+            "description": "Full transcript of the call"
+          },
+          "recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Url",
+            "description": "URL to the call recording"
+          },
+          "business_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Id",
+            "description": "ID of the business receiving the call"
+          },
+          "answers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CallLogAnswerCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "caller_phone_number",
+          "call_start_time",
+          "call_status",
+          "business_id"
+        ],
+        "title": "CallLogCreate",
+        "description": "Schema for creating call logs."
+      },
+      "CallLogUpdate": {
+        "properties": {
+          "call_end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call End Time"
+          },
+          "call_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Duration Seconds"
+          },
+          "call_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary"
+          },
+          "full_transcript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Transcript"
+          },
+          "recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Url"
+          }
+        },
+        "type": "object",
+        "title": "CallLogUpdate",
+        "description": "Schema for updating call logs."
+      },
+      "CallStatus": {
+        "type": "string",
+        "enum": [
+          "answered_by_ai",
+          "forwarded",
+          "missed",
+          "voicemail",
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "title": "CallStatus",
+        "description": "Enumeration for call status."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "UsageApiResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "total_minutes_used": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Minutes Used"
+          },
+          "remaining_free_minutes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Free Minutes"
+          },
+          "usage_record_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Record Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "UsageApiResponse",
+        "description": "Response schema for usage recording API."
+      },
+      "UsageRecordRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id",
+            "description": "User ID for the usage"
+          },
+          "business_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Id",
+            "description": "Business ID for the usage"
+          },
+          "minutes_used": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Minutes Used",
+            "description": "Number of minutes used"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id",
+            "description": "Optional call ID for reference"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp",
+            "description": "Timestamp of usage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "minutes_used"
+        ],
+        "title": "UsageRecordRequest",
+        "description": "Request schema for recording usage from telephony backend."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

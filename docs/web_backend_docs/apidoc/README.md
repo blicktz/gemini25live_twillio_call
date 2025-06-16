@@ -1,0 +1,177 @@
+# Split OpenAPI Documentation
+
+This directory contains the OpenAPI documentation split into functional groups for better maintainability and team collaboration.
+
+## 📊 Overview
+
+- **Original file size**: 130,259 bytes
+- **Split into**: 10 functional groups
+- **Total endpoints**: 44
+- **Generated files**: 12 (including summary and this README)
+
+## 📁 Files Structure
+
+### Summary File
+- `summary.json` - Overview of all functional groups
+
+### Functional Group Files
+- `health.json` - **Health** (3 endpoints)
+- `authentication.json` - **Authentication** (7 endpoints)
+- `users.json` - **Users** (2 endpoints)
+- `businesses.json` - **Businesses** (7 endpoints)
+- `ai_agent.json` - **AI Agent** (4 endpoints)
+- `call_logs.json` - **Call Logs** (3 endpoints)
+- `billing.json` - **Billing** (8 endpoints)
+- `webhooks.json` - **Webhooks** (2 endpoints)
+- `internal.json` - **Internal** (5 endpoints)
+- `untagged.json` - **Untagged** (3 endpoints)
+
+## 🚀 Usage
+
+### For Development Teams
+Each team can focus on their specific functional area:
+
+```bash
+# Frontend team working on authentication
+curl -s localhost:8000/api/v1/docs | jq . > auth_endpoints.json
+
+# Business team working on business profiles  
+curl -s localhost:8000/api/v1/docs | jq . > business_endpoints.json
+```
+
+### For Documentation Tools
+
+#### Swagger UI
+```bash
+# Serve individual group documentation
+npx @apidevtools/swagger-ui-cli --file authentication.json --port 3001
+npx @apidevtools/swagger-ui-cli --file businesses.json --port 3002
+```
+
+#### ReDoc
+```bash
+# Generate static documentation for each group
+npx redoc-cli build authentication.json --output auth-docs.html
+npx redoc-cli build businesses.json --output business-docs.html
+```
+
+### For Code Generation
+
+Generate modular client libraries:
+
+```bash
+# Generate TypeScript client for authentication
+openapi-generator generate \
+  -i authentication.json \
+  -g typescript-fetch \
+  -o ./clients/auth-client
+
+# Generate Python client for business operations
+openapi-generator generate \
+  -i businesses.json \
+  -g python \
+  -o ./clients/business-client \
+  --package-name business_api_client
+
+# Generate Go client for AI agent functionality  
+openapi-generator generate \
+  -i ai_agent.json \
+  -g go \
+  -o ./clients/go-ai-client
+```
+
+### For Testing
+
+Test specific functionality in isolation:
+
+```bash
+# Test only authentication endpoints
+schemathesis run authentication.json --base-url http://localhost:8000
+
+# Performance test business endpoints
+schemathesis run businesses.json --base-url http://localhost:8000 --workers 4
+```
+
+## 🔄 Regenerating Split Files
+
+To regenerate these split files after API changes:
+
+```bash
+# First, regenerate the main OpenAPI file
+make generate-openapi
+
+# Then split it again
+make split-openapi
+```
+
+## 🎯 Benefits
+
+1. **Faster Development**: Smaller files load and process faster
+2. **Team Collaboration**: Different teams can work on different API sections  
+3. **Selective Generation**: Generate clients for specific functionality only
+4. **Better Organization**: Clear separation of concerns by functional area
+5. **Easier Maintenance**: Changes to one functional area don't affect others
+6. **Reduced Complexity**: Each file contains only relevant schemas and endpoints
+
+## 🔗 Integration Points
+
+- **Original file**: `openapi.json`
+- **Generation script**: `split_openapi.py`
+- **Makefile target**: `make split-openapi`
+
+## 📋 Functional Groups
+
+
+### Health
+- **File**: `health.json`
+- **Endpoints**: 3
+- **Examples**: /api/v1/health/health, /api/v1/health/ready, /api/v1/health/products-status
+
+### Authentication
+- **File**: `authentication.json`
+- **Endpoints**: 7
+- **Examples**: /api/v1/auth/register, /api/v1/auth/login, /api/v1/auth/refresh-token, ... (+4 more)
+
+### Users
+- **File**: `users.json`
+- **Endpoints**: 2
+- **Examples**: /api/v1/users/me, /api/v1/users/me/password
+
+### Businesses
+- **File**: `businesses.json`
+- **Endpoints**: 7
+- **Examples**: /api/v1/businesses/, /api/v1/businesses/me, /api/v1/businesses/search-gmb, ... (+4 more)
+
+### AI Agent
+- **File**: `ai_agent.json`
+- **Endpoints**: 4
+- **Examples**: /api/v1/ai-agent/config, /api/v1/ai-agent/test-interaction, /api/v1/ai-agent/launch, ... (+1 more)
+
+### Call Logs
+- **File**: `call_logs.json`
+- **Endpoints**: 3
+- **Examples**: /api/v1/call-logs, /api/v1/call-logs/{call_log_id}, /api/v1/call-logs/stats/summary
+
+### Billing
+- **File**: `billing.json`
+- **Endpoints**: 8
+- **Examples**: /api/v1/billing/products-prices, /api/v1/billing/create-checkout-session, /api/v1/billing/create-portal-session, ... (+5 more)
+
+### Webhooks
+- **File**: `webhooks.json`
+- **Endpoints**: 2
+- **Examples**: /api/v1/webhooks/stripe, /api/v1/webhooks/telephony
+
+### Internal
+- **File**: `internal.json`
+- **Endpoints**: 5
+- **Examples**: /api/v1/internal/usage/record, /api/v1/internal/calls/log, /api/v1/internal/calls/{call_log_id}, ... (+2 more)
+
+### Untagged
+- **File**: `untagged.json`
+- **Endpoints**: 3
+- **Examples**: /health, /readyz, /
+
+---
+
+*Generated by split_openapi.py on 1749964554.4897342*

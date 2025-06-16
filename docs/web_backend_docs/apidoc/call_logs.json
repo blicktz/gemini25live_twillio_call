@@ -1,0 +1,609 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent - Call Logs",
+    "description": "Call Logs endpoints for AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent - Call Logs",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/call-logs": {
+      "get": {
+        "tags": [
+          "Call Logs"
+        ],
+        "summary": "List Call Logs",
+        "description": "List call logs for the user's business with pagination and filtering.",
+        "operationId": "list_call_logs_api_v1_call_logs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Items per page",
+              "default": 20,
+              "title": "Size"
+            },
+            "description": "Items per page"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter calls after this date",
+              "title": "Start Date"
+            },
+            "description": "Filter calls after this date"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter calls before this date",
+              "title": "End Date"
+            },
+            "description": "Filter calls before this date"
+          },
+          {
+            "name": "call_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CallStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by call status",
+              "title": "Call Status"
+            },
+            "description": "Filter by call status"
+          },
+          {
+            "name": "caller_phone_number",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by caller phone number",
+              "title": "Caller Phone Number"
+            },
+            "description": "Filter by caller phone number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedCallLogs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/call-logs/{call_log_id}": {
+      "get": {
+        "tags": [
+          "Call Logs"
+        ],
+        "summary": "Get Call Log Detail",
+        "description": "Get detailed information for a specific call log.",
+        "operationId": "get_call_log_detail_api_v1_call_logs__call_log_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "call_log_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Call Log Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallLogDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/call-logs/stats/summary": {
+      "get": {
+        "tags": [
+          "Call Logs"
+        ],
+        "summary": "Get Call Stats Summary",
+        "description": "Get summary statistics for call logs.",
+        "operationId": "get_call_stats_summary_api_v1_call_logs_stats_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start date for stats",
+              "title": "Start Date"
+            },
+            "description": "Start date for stats"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End date for stats",
+              "title": "End Date"
+            },
+            "description": "End date for stats"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Call Stats Summary Api V1 Call Logs Stats Summary Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CallLogAnswer": {
+        "properties": {
+          "question_asked": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Question Asked",
+            "description": "The question that was asked"
+          },
+          "answer_provided": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Provided",
+            "description": "The answer provided by the caller"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "call_log_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Log Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_asked",
+          "id",
+          "call_log_id",
+          "created_at"
+        ],
+        "title": "CallLogAnswer",
+        "description": "Schema for call log answer response."
+      },
+      "CallLogDetail": {
+        "properties": {
+          "caller_phone_number": {
+            "type": "string",
+            "maxLength": 30,
+            "title": "Caller Phone Number",
+            "description": "Caller's phone number"
+          },
+          "call_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Call Start Time",
+            "description": "When the call started"
+          },
+          "call_end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call End Time",
+            "description": "When the call ended"
+          },
+          "call_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Duration Seconds",
+            "description": "Duration of the call in seconds"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus",
+            "description": "Status of the call"
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary",
+            "description": "AI-generated summary of the call"
+          },
+          "full_transcript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Transcript",
+            "description": "Full transcript of the call"
+          },
+          "recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Url",
+            "description": "URL to the call recording"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Id"
+          },
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/CallLogAnswer"
+            },
+            "type": "array",
+            "title": "Answers"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "caller_phone_number",
+          "call_start_time",
+          "call_status",
+          "id",
+          "business_id",
+          "created_at"
+        ],
+        "title": "CallLogDetail",
+        "description": "Schema for detailed call log response."
+      },
+      "CallLogSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Id"
+          },
+          "caller_phone_number": {
+            "type": "string",
+            "title": "Caller Phone Number"
+          },
+          "call_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Call Start Time"
+          },
+          "call_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Duration Seconds"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_id",
+          "caller_phone_number",
+          "call_start_time",
+          "call_duration_seconds",
+          "call_status",
+          "ai_summary",
+          "created_at"
+        ],
+        "title": "CallLogSummary",
+        "description": "Schema for call log summary in list views."
+      },
+      "CallStatus": {
+        "type": "string",
+        "enum": [
+          "answered_by_ai",
+          "forwarded",
+          "missed",
+          "voicemail",
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "title": "CallStatus",
+        "description": "Enumeration for call status."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "PaginatedCallLogs": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CallLogSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size",
+          "pages"
+        ],
+        "title": "PaginatedCallLogs",
+        "description": "Schema for paginated call logs response."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

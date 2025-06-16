@@ -1,0 +1,991 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent",
+    "description": "AI Agent endpoints for AICallGO Backend - Health - Authentication - Users - Businesses - AI Agent",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/ai-agent/config": {
+      "get": {
+        "tags": [
+          "AI Agent"
+        ],
+        "summary": "Get Ai Agent Config",
+        "description": "Get AI agent configuration for the user's business.",
+        "operationId": "get_ai_agent_config_api_v1_ai_agent_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAgentConfiguration"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "AI Agent"
+        ],
+        "summary": "Update Ai Agent Config",
+        "description": "Update AI agent configuration.",
+        "operationId": "update_ai_agent_config_api_v1_ai_agent_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIAgentConfigurationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAgentConfiguration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "AI Agent"
+        ],
+        "summary": "Create Or Update Ai Agent Config",
+        "description": "Create or update AI agent configuration for the user's business.\nBusiness hours and core services are handled separately by the business endpoints.",
+        "operationId": "create_or_update_ai_agent_config_api_v1_ai_agent_config_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIAgentConfigurationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAgentConfiguration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai-agent/test-interaction": {
+      "post": {
+        "tags": [
+          "AI Agent"
+        ],
+        "summary": "Test Ai Agent Interaction",
+        "description": "Test interaction with the AI agent (\"Talk to Rosie\" feature).\nThis generates a simple greeting based on the business configuration.",
+        "operationId": "test_ai_agent_interaction_api_v1_ai_agent_test_interaction_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestInteractionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestInteractionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai-agent/launch": {
+      "post": {
+        "tags": [
+          "AI Agent"
+        ],
+        "summary": "Launch Ai Agent",
+        "description": "Launch the AI agent (\"Launch Rosie\" feature).\nThis validates the configuration and marks the agent as ready.\nActual telephony setup is handled by the separate AI agent backend.",
+        "operationId": "launch_ai_agent_api_v1_ai_agent_launch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchAgentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai-agent/status": {
+      "get": {
+        "tags": [
+          "AI Agent"
+        ],
+        "summary": "Get Ai Agent Status",
+        "description": "Get the current status of the AI agent configuration.\nThis focuses on configuration completeness rather than live agent status.",
+        "operationId": "get_ai_agent_status_api_v1_ai_agent_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentStatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AIAgentConfiguration": {
+        "properties": {
+          "greeting_message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeting Message"
+          },
+          "message_taking_preference": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Taking Preference"
+          },
+          "voicemail_instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voicemail Instructions"
+          },
+          "call_forwarding_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 30
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Forwarding Number"
+          },
+          "call_forwarding_enabled": {
+            "type": "boolean",
+            "title": "Call Forwarding Enabled",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Id"
+          },
+          "custom_questions": {
+            "items": {
+              "$ref": "#/components/schemas/CustomQuestion"
+            },
+            "type": "array",
+            "title": "Custom Questions"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AIAgentConfiguration",
+        "description": "Schema for AI agent configuration response."
+      },
+      "AIAgentConfigurationCreate": {
+        "properties": {
+          "greeting_message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeting Message"
+          },
+          "message_taking_preference": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Taking Preference"
+          },
+          "voicemail_instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voicemail Instructions"
+          },
+          "call_forwarding_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 30
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Forwarding Number"
+          },
+          "call_forwarding_enabled": {
+            "type": "boolean",
+            "title": "Call Forwarding Enabled",
+            "default": false
+          },
+          "custom_questions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CustomQuestionCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Questions"
+          },
+          "business_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BusinessHourCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Hours"
+          },
+          "core_services": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CoreServiceCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Services"
+          }
+        },
+        "type": "object",
+        "title": "AIAgentConfigurationCreate",
+        "description": "Schema for creating AI agent configuration with related data."
+      },
+      "AIAgentConfigurationUpdate": {
+        "properties": {
+          "greeting_message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeting Message"
+          },
+          "message_taking_preference": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Taking Preference"
+          },
+          "voicemail_instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voicemail Instructions"
+          },
+          "call_forwarding_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 30
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Forwarding Number"
+          },
+          "call_forwarding_enabled": {
+            "type": "boolean",
+            "title": "Call Forwarding Enabled",
+            "default": false
+          },
+          "custom_questions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CustomQuestionCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Questions"
+          },
+          "business_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BusinessHourCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Hours"
+          },
+          "core_services": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CoreServiceCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Services"
+          }
+        },
+        "type": "object",
+        "title": "AIAgentConfigurationUpdate",
+        "description": "Schema for updating AI agent configuration."
+      },
+      "AgentConfigurationChecks": {
+        "properties": {
+          "has_greeting": {
+            "type": "boolean",
+            "title": "Has Greeting",
+            "description": "Whether greeting message is configured"
+          },
+          "has_business_name": {
+            "type": "boolean",
+            "title": "Has Business Name",
+            "description": "Whether business name is set"
+          },
+          "has_phone_number": {
+            "type": "boolean",
+            "title": "Has Phone Number",
+            "description": "Whether phone number is set"
+          },
+          "has_voicemail_instructions": {
+            "type": "boolean",
+            "title": "Has Voicemail Instructions",
+            "description": "Whether voicemail instructions are set"
+          },
+          "call_forwarding_enabled": {
+            "type": "boolean",
+            "title": "Call Forwarding Enabled",
+            "description": "Whether call forwarding is enabled"
+          },
+          "custom_questions_count": {
+            "type": "integer",
+            "title": "Custom Questions Count",
+            "description": "Number of custom questions configured"
+          },
+          "business_hours_configured": {
+            "type": "boolean",
+            "title": "Business Hours Configured",
+            "description": "Whether business hours are configured"
+          },
+          "core_services_configured": {
+            "type": "boolean",
+            "title": "Core Services Configured",
+            "description": "Whether core services are configured"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_greeting",
+          "has_business_name",
+          "has_phone_number",
+          "has_voicemail_instructions",
+          "call_forwarding_enabled",
+          "custom_questions_count",
+          "business_hours_configured",
+          "core_services_configured"
+        ],
+        "title": "AgentConfigurationChecks",
+        "description": "Schema for agent configuration status checks."
+      },
+      "AgentStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Agent status (not_configured, incomplete, configured)"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Status message"
+          },
+          "configuration_complete": {
+            "type": "boolean",
+            "title": "Configuration Complete",
+            "description": "Whether configuration is complete"
+          },
+          "configuration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentConfigurationChecks"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Detailed configuration checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "configuration_complete"
+        ],
+        "title": "AgentStatusResponse",
+        "description": "Response schema for AI agent status."
+      },
+      "BusinessHourCreate": {
+        "properties": {
+          "day_of_week": {
+            "$ref": "#/components/schemas/DayOfWeek",
+            "description": "Day of week (0=Sunday, 6=Saturday)"
+          },
+          "open_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Time",
+            "description": "Opening time"
+          },
+          "close_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close Time",
+            "description": "Closing time"
+          },
+          "is_closed": {
+            "type": "boolean",
+            "title": "Is Closed",
+            "description": "Whether the business is closed on this day",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "day_of_week"
+        ],
+        "title": "BusinessHourCreate",
+        "description": "Schema for creating business hours."
+      },
+      "CoreServiceCreate": {
+        "properties": {
+          "service_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Service Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service_name"
+        ],
+        "title": "CoreServiceCreate",
+        "description": "Schema for creating core services."
+      },
+      "CustomQuestion": {
+        "properties": {
+          "question_text": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question Text"
+          },
+          "expected_answer_type": {
+            "$ref": "#/components/schemas/ExpectedAnswerType",
+            "default": "text"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required",
+            "default": false
+          },
+          "display_order": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Display Order",
+            "default": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ai_agent_configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ai Agent Configuration Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_text",
+          "id",
+          "ai_agent_configuration_id",
+          "created_at"
+        ],
+        "title": "CustomQuestion",
+        "description": "Schema for custom question response."
+      },
+      "CustomQuestionCreate": {
+        "properties": {
+          "question_text": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question Text"
+          },
+          "expected_answer_type": {
+            "$ref": "#/components/schemas/ExpectedAnswerType",
+            "default": "text"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required",
+            "default": false
+          },
+          "display_order": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Display Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_text"
+        ],
+        "title": "CustomQuestionCreate",
+        "description": "Schema for creating custom questions."
+      },
+      "DayOfWeek": {
+        "type": "integer",
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "title": "DayOfWeek",
+        "description": "Enumeration for days of the week."
+      },
+      "ExpectedAnswerType": {
+        "type": "string",
+        "enum": [
+          "text",
+          "number",
+          "date",
+          "yes_no"
+        ],
+        "title": "ExpectedAnswerType",
+        "description": "Enumeration for expected answer types for custom questions."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LaunchAgentRequest": {
+        "properties": {
+          "confirm_launch": {
+            "type": "boolean",
+            "title": "Confirm Launch",
+            "description": "Confirmation to launch the agent",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "LaunchAgentRequest",
+        "description": "Request schema for launching AI agent."
+      },
+      "LaunchAgentResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the launch was successful"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Status message"
+          },
+          "agent_status": {
+            "type": "string",
+            "title": "Agent Status",
+            "description": "Current agent status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "agent_status"
+        ],
+        "title": "LaunchAgentResponse",
+        "description": "Response schema for launching AI agent."
+      },
+      "TestInteractionRequest": {
+        "properties": {
+          "caller_input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caller Input",
+            "description": "Initial caller input"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Session ID for multi-turn conversation"
+          }
+        },
+        "type": "object",
+        "title": "TestInteractionRequest",
+        "description": "Request schema for testing AI agent interaction."
+      },
+      "TestInteractionResponse": {
+        "properties": {
+          "ai_response": {
+            "type": "string",
+            "title": "Ai Response",
+            "description": "AI agent's response"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Session ID for continuing conversation"
+          },
+          "interaction_complete": {
+            "type": "boolean",
+            "title": "Interaction Complete",
+            "description": "Whether the interaction is complete"
+          },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url",
+            "description": "URL to generated audio file"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ai_response",
+          "interaction_complete"
+        ],
+        "title": "TestInteractionResponse",
+        "description": "Response schema for AI agent test interaction."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

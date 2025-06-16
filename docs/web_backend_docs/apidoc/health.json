@@ -1,0 +1,82 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AICallGO Backend - Health",
+    "description": "Health endpoints for AICallGO Backend - Health",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health Check",
+        "description": "Basic health check endpoint (liveness probe).\nReturns 200 OK if the application is running.",
+        "operationId": "health_check_api_v1_health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Check Api V1 Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Readiness Check",
+        "description": "Comprehensive readiness check endpoint.\nChecks critical dependencies and returns their status.",
+        "operationId": "readiness_check_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Readiness Check Api V1 Health Ready Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/products-status": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Products Health Check",
+        "description": "Check if products are available in the database.\nUseful for monitoring Stripe sync status.",
+        "operationId": "products_health_check_api_v1_health_products_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Products Health Check Api V1 Health Products Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
