@@ -20,6 +20,10 @@
 *   "must be able to follow a pre-configured max time to maintain a call, when the time is up, the call will be ended automatically"
     *   **Question:** When a call is automatically ended due to max time, what message, if any, will the AI agent deliver to the caller before disconnecting? (e.g., "Our call time is now complete. Thank you for calling.")
     *   **Answer:** A message will be delivered to the caller before disconnecting. This message will be statically configurable at the AI agent level via environment variables.
+    *   **Question:** Should there be a warning before the max time limit is reached (e.g., "We have 2 minutes remaining")?
+    *   **Answer:** NO, absolutely not, this feature is more like a safety net against anyone who would abuse our AI agent service. We don't expect a lot of the caller will encounter this max time limit (it will be set well-longer than normal call length).
+    *   **Question:** What happens if the caller is mid-sentence when the time limit hits?
+    *   **Answer:** If that does happen, we should cut off the caller, and say something like 'sorry, we're unable to process your call further for now' etc.
 
 **Agent Customization - Basic:**
 *   "must be able to be configured to use a pre-configured Name to refer to the agent herself"
@@ -64,7 +68,11 @@
     *   **Question:** What message, if any, will be played before hanging up on a detected sales call?
     *   **Answer:** No specific message will be played. The AI model will be instructed via the system prompt to interrupt the conversation if it detects a sales call, politely refuse any offers, and then hang up immediately.
     *   **Question:** Is there a risk of false positives (flagging legitimate calls as sales)? How will this be mitigated?
-    *   **Answer:** The system will aim for almost 100% certainty before classifying a call as a sales call and hanging up to minimize false positives. This will be managed through prompt engineering.
+    *   **Answer:** The system will aim for almost 95% certainty before classifying a call as a sales call and hanging up to minimize false positives. This will be managed through prompt engineering.
+    *   **Question:** What's the acceptable false positive rate for sales call detection? Should there be a "confidence threshold" before hanging up?
+    *   **Answer:** Yes, there should be a confidence threshold before hanging up. Let's set the confidence threshold to 95%.
+    *   **Question:** How should the agent handle edge cases like legitimate business calls that mention sales/products?
+    *   **Answer:** We should instruct the AI model to consider the context, the more we talk with the caller, the more likely the AI model should be able to figure out whether it's a legitimate call for query of the SMB owner's business, or just a sales spam call.
 
 **Agent Customization - FAQ:**
 *   "must be able to take a list of up to 20 FAQs, and answer caller accordingly"
@@ -73,7 +81,9 @@
     *   **Question:** How will the AI agent determine the "most relevant" FAQ to answer a caller's question? What level of natural language understanding is expected for matching questions to FAQs?
     *   **Answer:** The list of FAQs will be provided to the AI model as part of its system prompt. The model's natural language understanding capabilities will be leveraged to match caller questions to the provided FAQs. If this approach proves insufficient, a RAG (Retrieval Augmented Generation) system will be considered for future enhancement.
     *   **Question:** What happens if the caller's question doesn't match any of the 20 FAQs? How will the agent respond? (e.g., "I'm sorry, I don't have information on that. Can I help with something else?").
-    *   **Answer:** If a caller's question does not match any of the provided FAQs, the AI agent will inform the caller that it doesn't have the answer, state that the question will be documented, and offer to forward it to the SMB owner.
+    *   **Answer:** If a caller's question does not match any of the provided FAQs, the AI agent will inform the caller that it doesn't have the answer, state that the question will be documented, and provided to the SMB owner.
+    *   **Question:** When the AI can't match a question to the 20 FAQs, the QA says it will "offer to forward it to the SMB owner." How will this forwarding mechanism work (email, SMS, in-app notification)?
+    *   **Answer:** Good catch, we can't forward call to SMB owner in real-time now. It should not offer to forward to SMB owner. Only the message taken will be offered to the SMB owner, not the call.
 
 **Technical Stack Requirements:**
 *   "must be a fastapi backend that has rate limiter and other necessary security measures"
@@ -160,5 +170,21 @@
             ```
     *   **Further Question (Internal Number Handling):** For scenario 3 (internal Twilio number), what specific behavior or script should the AI agent follow after picking up the call? (e.g., standard greeting then open-ended question, or a specific message like "This number is for automated services, how can I direct your query?").
     *   **Answer (Internal Number Handling):** The AI agent will use a standard greeting with open-ended questions.
+
+**Multi-language Support:**
+*   **Question:** The checklist doesn't mention language support. Should the AI agent detect caller language and respond accordingly, or is English-only acceptable for MVP?
+*   **Answer:** Only English for now.
+
+**Error Handling & Failover:**
+*   **Question:** If the Gemini 2.0 model becomes unavailable mid-call, what's the fallback behavior? Should calls be transferred to voicemail or a human?
+*   **Answer:** This is single failure point in our system, we don't have a good fall back now. Please make this clear that we need to figure this out after the first MVP is out.
+
+**Call Quality & Performance Metrics:**
+*   **Question:** What specific metrics should be tracked for call quality (latency, audio clarity, conversation success rate)? How will these be exposed to the SMB owner?
+*   **Answer:** For now, we don't track call quality explicitly, we'll review call recording and transcriptions offline. But no explicit metrics will be exposed to SMB owner.
+
+**Compliance & Legal Requirements:**
+*   **Question:** Are there specific compliance requirements for call recording consent, data retention, or TCPA compliance that should be built into the system?
+*   **Answer:** The legal disclaimer will cover this, we don't need to implement any additional features.
 
         
