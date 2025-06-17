@@ -187,14 +187,14 @@ curl -X GET '/api/v1/internal/ai-agent/a1b2c3d4-e5f6-7890-abcd-ef1234567890/conf
   "business_id": "string (UUID)",
   "agent_name": "string",
   "greeting_message": "string",
-  "legal_disclaimer_template": "string",
+  "legal_disclaimer": "string",
   "tone": "string (enum: casual, cheerful, formal)",
   "max_call_duration_minutes": "integer",
   "enable_1800_blocking": "boolean",
   "enable_sales_detection": "boolean",
   "voicemail_instructions": "string",
-  "call_forwarding_number": "string",
-  "call_forwarding_enabled": "boolean",
+  "call_forwarding_number": "string (placeholder, not implemented in first phase)",
+  "call_forwarding_enabled": "boolean (placeholder, not implemented in first phase)",
   "faq_list": [
     {
       "question": "string",
@@ -252,7 +252,7 @@ class AIAgentConfigurationBase(BaseModel):
     
     # New required fields
     agent_name: str | None = Field(None, max_length=100)
-    legal_disclaimer_template: str | None = Field(None, max_length=500) 
+    legal_disclaimer: str | None = Field(None, max_length=500, description="Plain English sentences without placeholder variables") 
     tone: AgentTone | None = Field(None)
     max_call_duration_minutes: int = Field(default=30, ge=1, le=120)
     enable_1800_blocking: bool = Field(default=True)
@@ -357,7 +357,7 @@ curl -X POST \
 - **Pre-call Verification API**: < 200ms (critical path)
 - **AI Agent Configuration API**: < 500ms  
 - **Business Information API**: < 300ms
-- **Call Log Creation API**: < 1000ms (non-blocking)
+- **Call Log Creation API**: < 1000ms (non-blocking, with idempotency handling - Web Backend must ensure only one copy of the same call log is stored)
 - **Event Notification API**: < 500ms (async processing)
 
 ### Caching Strategy
@@ -385,8 +385,8 @@ async def get_business_by_phone_number(db: Session, phone_number: str):
 #### Required Indexes
 ```sql
 -- Phone number lookup optimization
-CREATE INDEX idx_businesses_phone_number ON businesses(phone_number);
-CREATE INDEX idx_businesses_phone_normalized ON businesses(phone_number_normalized);
+CREATE INDEX idx_businesses_phone_number ON businesses(primary_business_phone_number);
+CREATE INDEX idx_businesses_phone_normalized ON businesses(primary_business_phone_number);
 
 -- Call log performance
 CREATE INDEX idx_call_logs_business_start_time ON call_logs(business_id, call_start_time);
@@ -480,6 +480,10 @@ TECHNICAL_CALL_ERROR = "AICG-0505"
 - [ ] API documentation updates
 - [ ] Integration tests
 
+#### Security & Data Handling
+- Security & PII handling requirements skipped for first iteration
+- Recording retention, encryption, and GDPR compliance to be addressed in future phases
+
 ---
 
 ## 🧪 Testing Requirements
@@ -541,3 +545,5 @@ TECHNICAL_CALL_ERROR = "AICG-0505"
 - [ ] Load test pre-call verification endpoint
 - [ ] Validate cache performance
 - [ ] Monitor response times in production
+- [ ] Verify call log idempotency handling
+- [ ] Test recording URL processing (Web Backend downloads from Twilio)
