@@ -1,7 +1,7 @@
 # AI Agent Backend - Technical Design Document (TDD) - Phase 1
 
-**Document Version**: 1.0  
-**Date**: June 16, 2025
+**Document Version**: 1.1  
+**Date**: June 2025
 **Author**: AI Backend Architect
 
 ## 1. Overview & Executive Summary
@@ -14,11 +14,12 @@ The core problem being solved is the automated handling of customer calls for Sm
 
 *   **FastAPI Framework:** Chosen for its high performance, asynchronous capabilities (crucial for real-time audio streaming and API calls), automatic data validation (Pydantic), and OpenAPI documentation generation, which aligns with the project's need for efficient development and clear API contracts.
 *   **Stateless Design:** The AI Agent will not maintain its own database. All persistent data (business configurations, call logs, user information) will be managed by the existing Web Backend. This simplifies the AI Agent's architecture, enhances scalability, and centralizes data management.
-*   **Google ADK with Gemini 2.0 Live:** Leveraged for advanced conversational AI capabilities, including real-time audio processing and natural language understanding, as specified in the requirements.
+*   **Google ADK with Gemini 2.0 Live:** Leveraged for advanced conversational AI capabilities, including real-time audio processing and natural language understanding, as specified in the requirements, with robust error handling and session recovery.
 *   **Twilio Integration:** Used for all telephony interactions, including receiving incoming calls, streaming audio to/from the AI model, and managing call lifecycle (hang-ups, recordings).
-*   **Render.com Deployment:** Selected for its ease of use for deploying containerized Python applications, managed services (like Redis if needed for caching API responses from web backend, though agent itself is stateless), and scalability options.
+*   **Render.com Deployment:** Selected for its ease of use for deploying containerized Python applications, managed services, and scalability options.
 *   **Web Backend API Consumption:** The AI Agent will rely heavily on the Web Backend's APIs (as specified in `webbackend_api_update_specification.md`) for pre-call verification, fetching business/agent configurations, and posting call logs/recordings. This ensures a single source of truth for business data.
 *   **Security via API Keys:** Service-to-service communication between the AI Agent and the Web Backend will be secured using API keys (`X-API-Key`), as already established in the Web Backend.
+*   **Robust Error Handling:** Comprehensive error recovery strategies for Gemini ADK failures, Web Backend API timeouts, and audio processing issues.
 
 ## 2. Technology Stack Selection
 
@@ -36,8 +37,6 @@ The core problem being solved is the automated handling of customer calls for Sm
     *   *Justification:* Ensures consistent deployment environments across development, staging, and production on Render.com. Simplifies dependency management.
 *   **Permanent Storage (for Recordings):** Google Cloud Storage.
     *   *Justification:* Specified in requirements for storing call recordings. The AI Agent will upload recordings here and provide the URL to the Web Backend.
-*   **Caching Layer (for Web Backend API responses):** Redis ( deployed on Render.com and shared caching is beneficial across multiple agent instances).
-    *   *Justification:* To reduce latency and load on the Web Backend for frequently accessed, less volatile data like business configurations. The pre-call verification API response from the web backend already suggests caching business info.
 
 ## 3. System Architecture & Component Design
 
@@ -123,22 +122,28 @@ graph TD
             2.  `audio_processor.process_twilio_to_gemini` likely performs:
                 *   Base64 decoding.
                 *   Mulaw decoding to PCM.
-                *   Resampling from `settings.input_sample_rate` (8kHz) to `settings.gemini_input_sample_rate` (16kHz).
-            3.  The resulting 16kHz PCM audio chunk is passed to `gemini_client.send_audio_chunk()`.
+                *   Resampling from `settings.input_sample_rate` (8kHz) to `settings.gemini_input_sample_rate` (24kHz).
+                *   **Rationale for 24kHz:** Gemini 2.5 Flash requires 24kHz sample rate for optimal voice processing and natural language understanding.
+                *   **Quality Consideration:** Upsampling from 8kHz to 24kHz provides the required format while maintaining acceptable audio quality for conversation.
+            3.  The resulting 24kHz PCM audio chunk is passed to `gemini_client.send_audio_chunk()`.
         *   **Gemini to Twilio Audio Path (`websockets.TwilioMediaStreamHandler._send_audio_to_twilio` calling `audio_processor.process_gemini_to_twilio`):
             1.  Receives audio bytes from Gemini (via callback, typically `settings.gemini_output_sample_rate` e.g., 24kHz PCM).
             2.  `audio_processor.process_gemini_to_twilio` likely performs:
                 *   Resampling from `settings.gemini_output_sample_rate` (24kHz) to `settings.output_sample_rate` (8kHz).
+                *   **Twilio Requirement:** Twilio's media streaming requires 8kHz mulaw format for telephony compatibility.
                 *   PCM to mulaw encoding.
                 *   Base64 encoding of the mulaw audio.
             3.  The resulting base64 string is sent back to Twilio via WebSocket `media` message.
         *   **Audio Format Configuration:** Relies heavily on `settings` from `app.config.py` for sample rates (`input_sample_rate`, `gemini_input_sample_rate`, `gemini_output_sample_rate`, `output_sample_rate`).
+        *   **WebSocket Connection and Session Management:**
+            *   **WebSocket Connection Lifecycle:** Each incoming call establishes a dedicated WebSocket connection for media streaming that remains active throughout the entire call duration with automatic reconnection logic for temporary network issues.
+            *   **Session State Management:** Each call maintains a unique session ID linking Twilio call SID to Gemini session, including call context, conversation history, and current audio streams.
+            *   **Concurrent Call Handling:** Each call operates in its own async context with dedicated resources and no shared state between concurrent calls to prevent interference.
         *   **Debugging:** MVP includes `settings.save_debug_audio` to save intermediate audio files, which is useful for troubleshooting audio conversion issues.
 *   **Configuration Manager (`ConfigMgmt`):
     *   **Primary Purpose:** Fetch and manage AI agent configurations.
     *   **Key Responsibilities:**
         *   Retrieve agent name, tone, greeting messages, legal disclaimers, custom questions, FAQs, max call duration, etc., from the Web Backend using `WebBackendClient`.
-        *   Cache configurations locally (in-memory with TTL or Redis) to minimize repeated API calls to the Web Backend.
 *   **Call Control Logic (`CallCtrl`):
     *   **Primary Purpose:** Implement the business logic for call handling.
     *   **Key Responsibilities:**
@@ -243,6 +248,15 @@ class AIAgentConfigResponse(BaseModel):
     faq_list: List[FAQItem]
     custom_questions: List[CustomQuestion]
 
+class CallStatus(str, Enum):
+    ANSWERED_BY_AI = "answered_by_ai"
+    FORWARDED = "forwarded"
+    MISSED = "missed"
+    VOICEMAIL = "voicemail"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
 class CallNotAnsweredReason(str, Enum):
     NOT_CUSTOMER = "not_customer"
     INSUFFICIENT_CREDITS = "insufficient_credits"
@@ -250,23 +264,38 @@ class CallNotAnsweredReason(str, Enum):
     SALES_DETECTED = "sales_detected"
     TECHNICAL_ERROR = "technical_error"
 
+class TechnicalErrorCode(str, Enum):
+    NETWORK_ERROR = "network_error"
+    API_TIMEOUT = "api_timeout"
+    SERVICE_UNAVAILABLE = "service_unavailable"
+    INVALID_PHONE_FORMAT = "invalid_phone_format"
+    AUTHENTICATION_FAILED = "authentication_failed"
+
+class CallLogAnswerCreate(BaseModel):
+    question_asked: str = Field(min_length=1)
+    answer_provided: Optional[str] = None
+
 class CallLogCreateRequest(BaseModel):
-    # Fields to be sent to the Web Backend's CallLogCreate schema
-    # This will include fields like business_id, caller_phone_number, transcript_text, recording_url, etc.
-    # Refer to webbackend_api_update_specification.md for the full schema expected by the web backend.
-    # Example subset:
-    business_id: uuid.UUID
-    caller_phone_number: str
-    call_start_time: datetime
-    call_end_time: datetime
-    duration_seconds: int
-    transcript_text: Optional[str] = None
-    recording_url: Optional[HttpUrl] = None
-    twilio_call_sid: Optional[str] = Field(None, max_length=100)
-    call_not_answered_reason: Optional[CallNotAnsweredReason] = None
-    ai_agent_version: Optional[str] = Field(None, max_length=50)
-    gemini_model_version: Optional[str] = Field(None, max_length=50)
-    # ... other fields as per web backend's CallLogCreate schema
+    # Required fields
+    caller_phone_number: str = Field(max_length=30)  # E.164 format, caller's phone number
+    call_start_time: datetime  # ISO 8601 format, when the call started
+    call_status: CallStatus  # enum, status of the call
+    business_id: uuid.UUID  # ID of the business receiving the call
+    
+    # Optional fields
+    call_end_time: Optional[datetime] = None  # When the call ended
+    call_duration_seconds: Optional[int] = Field(None, ge=0)  # Duration in seconds (>=0)
+    ai_summary: Optional[str] = None  # AI-generated summary of the call
+    full_transcript: Optional[str] = None  # Full transcript of the call
+    recording_url: Optional[str] = None  # URL to the call recording
+    answers: Optional[List[CallLogAnswerCreate]] = None  # List of Q&A pairs
+    
+    # New AI agent enhancement fields
+    twilio_call_sid: Optional[str] = Field(None, max_length=100)  # Twilio call SID
+    call_not_answered_reason: Optional[CallNotAnsweredReason] = None  # Why call wasn't answered
+    ai_agent_version: Optional[str] = Field(None, max_length=50)  # AI agent version
+    gemini_model_version: Optional[str] = Field(None, max_length=50)  # Gemini model version
+    technical_error_code: Optional[TechnicalErrorCode] = None  # Specific technical error
 
 # --- Internal AI Agent Models (example) ---
 
@@ -376,6 +405,33 @@ These are defined in `webbackend_api_update_specification.md`. The AI Agent will
         *   `SYSTEM_PROMPT`: The base instruction or persona for the AI agent.
         *   `LOG_LEVEL`: Logging level for the application (e.g., `INFO`, `DEBUG`).
         *   `USE_TWILIO_AUDIO_QUEUE`: Boolean (`True`/`False`) to control whether to use a queue-based system for sending audio to Twilio (MVP default: `True`).
+        *   `WEB_BACKEND_BASE_URL`: Base URL for the Web Backend API.
+        *   `WEB_BACKEND_API_KEY`: API key for authenticating with the Web Backend.
+        *   `GCS_BUCKET_NAME`: Google Cloud Storage bucket for call recordings.
+
+*   **Error Handling Strategy:**
+    *   **Gemini ADK Failures:**
+        *   Implement try-catch blocks around all ADK operations as recommended in ADK documentation.
+        *   On session failures, attempt to restart the Gemini session once.
+        *   If restart fails, gracefully end the call with an apology message.
+        *   Log all ADK errors with session context for debugging.
+        *   Use ADK's SessionException handling for proper error categorization.
+    *   **Web Backend API Timeouts:**
+        *   Set 10-second timeout for all Web Backend API calls.
+        *   Implement exponential backoff retry (max 3 attempts) for non-critical calls.
+        *   For critical pre-call verification failures, end call immediately.
+        *   For post-call logging failures, queue for later retry using background tasks.
+        *   Provide fallback responses when configuration data is unavailable.
+    *   **Audio Processing Errors:**
+        *   Handle mulaw/PCM conversion failures gracefully.
+        *   Implement audio buffer overflow protection.
+        *   Log audio processing errors without exposing sensitive data.
+        *   Continue call processing when possible, terminate only on critical audio failures.
+    *   **GCS Upload Failures:**
+        *   Retry GCS uploads up to 3 times with exponential backoff.
+        *   Store recording metadata even if upload fails.
+        *   Log upload failures for manual intervention.
+        *   Continue call processing regardless of recording upload status.
 
 *   **Testing Strategy:**
     *   **Unit Tests (`pytest`):**
@@ -422,9 +478,12 @@ These are defined in `webbackend_api_update_specification.md`. The AI Agent will
         *   `twilio_account_sid`, `twilio_auth_token`, `twilio_webhook_url` (optional), `twilio_validate_signature`.
     *   **Incoming Call Webhook (`app/twilio_integration/webhooks.py` - `handle_incoming_call` at `/twilio-voice`):
         *   Validates Twilio signature using `RequestValidator(settings.twilio_auth_token)` if `settings.twilio_validate_signature` is true.
-        *   Responds with TwiML:
+        *   Performs pre-call verification by calling the Web Backend's `verify-call-reception` endpoint.
+        *   If verification succeeds, responds with TwiML:
             *   `<Say>`: Initial greeting.
+            *   `<Record>`: Starts call recording (stored in Twilio, later uploaded to GCS).
             *   `<Connect><Stream url="wss://{request.url.hostname}/media-stream"></Stream></Connect>`: This is key. It instructs Twilio to open a WebSocket connection to the `/media-stream` endpoint on the same host.
+        *   If verification fails, responds with TwiML to politely decline the call.
     *   **WebSocket Handler (`app/twilio_integration/websockets.py` - `TwilioMediaStreamHandler` called by `handle_media_stream` at `/media-stream`):
         *   **Connection:** Accepts WebSocket connection.
         *   **Message Processing (`_process_message`):
@@ -512,9 +571,22 @@ These are defined in `webbackend_api_update_specification.md`. The AI Agent will
     *   Implement robust error handling for ADK interactions.
     *   Pass necessary configurations (agent name, tone, FAQs, custom questions, greeting, disclaimer) to the Gemini model via system prompts or initial messages as appropriate through the ADK.
     *   Handle sales call detection based on model's output/flags, and implement hang-up logic.
+    *   **Voice Activity Detection (VAD):** VAD will be handled automatically by the Gemini 2.0 live model. No additional VAD implementation is required in the AI Agent.
+
+*   **Performance Requirements:**
+    *   **Latency:** Target <500 millisecond response time from user speech end to AI response start
+    *   **Concurrent Calls:** Support minimum 10 concurrent calls initially, with horizontal scaling capability
+    *   **Audio Quality:** Maintain acceptable voice quality through 8kHz↔24kHz conversion pipeline
+    *   **Uptime:** Target 99.5% uptime with graceful degradation during failures
 
 *   **Web Backend Integration:**
     *   Always use the `WebBackendClient` for interactions.
-    *   Implement caching with appropriate TTLs for data fetched from the Web Backend (e.g., agent config, business info after `verify-call-reception`).
+    *   **API Key Authentication Flow:**
+        *   AI Agent includes `X-API-Key` header in all requests to Web Backend
+        *   Web Backend validates the API key and returns 401 if invalid
+        *   AI Agent handles 401 responses by logging the error and gracefully ending the call
+        *   API key is configured via environment variable `WEB_BACKEND_API_KEY`
+        *   All API calls include proper timeout handling (10 seconds) and retry logic
+    *   **No Caching Strategy:** Based on architectural decision, the AI Agent will not implement caching. All business configuration and data will be fetched fresh from the Web Backend for each request to ensure data consistency and simplify the architecture.
     *   Handle API errors gracefully (retries with backoff for transient errors, logging for persistent errors).
     *   Ensure the AI Agent sends data (e.g., `CallLogCreateRequest`) in the exact format expected by the Web Backend.

@@ -172,6 +172,7 @@ Answer: the CallContext is a temporary storage we hold for the duration of a cal
   - Which caching approach should be implemented?
   - What are the specific TTL values for different types of cached data?
   - How does caching work across multiple AI Agent instances?
+Answer: we should not use cache, the cache of info will be handled by the webbackend
 
 ### 8. **Security Implementation Details**
 - **Issue**: API key authentication mentioned but implementation details missing
@@ -179,11 +180,167 @@ Answer: the CallContext is a temporary storage we hold for the duration of a cal
   - How are API keys rotated?
   - Where are API keys stored securely in the container?
   - What's the authentication flow between AI Agent and Web Backend?
+Answer: API keys are fixed, and stored in env vars, the authentication flow is : """I'll help you answer the authentication flow question by examining the current implementation and the specification. Let me search for the authentication details.
+Search files...
+Now let me search for environment variable configuration for the INTERNAL_API_KEY:
+Ran tool
+Based on my analysis of the codebase and documentation, here's the complete answer to the authentication flow question:
+
+## Authentication Flow Between AI Agent and Web Backend
+
+The authentication between the AI Agent and Web Backend uses a **shared API key authentication** approach for service-to-service communication. Here's the complete flow:
+
+### 🔐 Authentication Method
+
+**Type**: API Key Authentication (Bearer Token Alternative)  
+**Header**: `X-API-Key`  
+**Scope**: Service-to-Service Communication  
+**Security Level**: Internal API endpoints only
+
+### 🔄 Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Agent
+    participant WB as Web Backend
+    participant Auth as Auth Middleware
+    
+    AI->>WB: HTTP Request with X-API-Key header
+    WB->>Auth: verify_internal_api_key()
+    Auth->>Auth: Compare with settings.INTERNAL_API_KEY
+    alt Valid API Key
+        Auth->>WB: Authentication Success
+        WB->>AI: API Response (200/201/etc)
+    else Invalid API Key
+        Auth->>AI: 401 Unauthorized
+    end
+```
+
+### 🛠️ Implementation Details
+
+#### 1. **API Key Header Format**
+```http
+X-API-Key: your_internal_api_key_here
+Content-Type: application/json
+```
+
+#### 2. **Authentication Function**
+Location: `app/api/v1/endpoints/internal.py`
+
+```python
+def verify_internal_api_key(x_api_key: str = Header(...)) -> bool:
+    """
+    Verify the internal API key for service-to-service authentication.
+    """
+    if x_api_key != settings.INTERNAL_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid API key"
+        )
+    return True
+```
+
+#### 3. **Configuration**
+- **Environment Variable**: `INTERNAL_API_KEY`
+- **Settings Location**: `app/core/config.py`
+- **Required**: Yes (mandatory for all internal endpoints)
+
+#### 4. **Protected Endpoints**
+
+All internal APIs require this authentication:
+
+```python
+# Pre-call verification
+POST /api/v1/businesses/verify-call-reception
+
+# Event notifications  
+POST /api/v1/businesses/notify-event
+
+# Business information lookup
+GET /api/v1/internal/businesses/{business_id}
+
+# AI agent configuration lookup
+GET /api/v1/internal/ai-agent/{business_id}/config
+
+# Usage tracking
+POST /api/v1/internal/usage/record
+
+# Call log management
+POST /api/v1/internal/calls/log
+PUT /api/v1/internal/calls/{call_log_id}
+POST /api/v1/internal/calls/{call_log_id}/transcript
+
+# Health check
+GET /api/v1/internal/health
+```
+
+### 📝 Usage Examples
+
+#### Valid Request
+```bash
+curl -X POST 'https://api.aicallgo.com/api/v1/businesses/verify-call-reception' \
+  -H 'X-API-Key: your_internal_api_key_here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "to_phone_number": "+1234567890"
+  }'
+```
+
+#### Response on Success
+```json
+{
+  "can_receive_call": true,
+  "reason_code": "OK",
+  "reason_message": "Customer verified with sufficient credits",
+  "business_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "current_credit_balance": 45.5
+}
+```
+
+#### Response on Authentication Failure
+```json
+HTTP 401 Unauthorized
+{
+  "detail": "Invalid API key"
+}
+```
+
+### 🔒 Security Considerations
+
+#### 1. **API Key Requirements**
+- **Length**: Should be long, randomly generated string
+- **Storage**: Environment variable only, never in code
+- **Scope**: Only for internal service communication
+
+#### 2. **Network Security**
+- **HTTPS**: All communication must use HTTPS in production
+- **Internal Networks**: Prefer private networks when possible
+- **Rate Limiting**: Applied per API key (60 requests/minute)
+
+
+### 🚨 Error Handling
+
+#### HTTP Status Codes
+- **401 Unauthorized**: Invalid or missing API key
+- **403 Forbidden**: Valid key but insufficient permissions (future use)
+- **429 Too Many Requests**: Rate limit exceeded
+
+#### Error Response Format
+```json
+{
+  "detail": "Invalid API key",
+  "error_code": "AICG-0401",
+  "timestamp": "2025-01-08T10:30:00Z"
+}
+```
+
+"""
 
 ### 9. **Call Recording Workflow**
 - **Issue**: Two different recording upload paths mentioned in the architecture diagram
 - **Confusion**: "Twilio --Store Call Recording--> GCS" vs "AIAgentAPI --Upload Recording--> GCS"
 - **Question**: Which component is responsible for uploading recordings to GCS?
+Answer: this is not correct: "twilio -- store call recordinging-- ai-agent retrievel recording from twilio api -- ai-agent upload recording to gcs"; please update the TDD doc for this
 
 ### 10. **Voice Activity Detection (VAD)**
 - **Issue**: MVP analysis mentions "need for robust VAD" but no VAD implementation specified
@@ -191,6 +348,7 @@ Answer: the CallContext is a temporary storage we hold for the duration of a cal
   - How will the system detect when a user has finished speaking?
   - What's the timeout for user speech?
   - How does this integrate with Gemini's turn-taking?
+Ansswer: NO VAD from ai-agent side, we will leave the gemini live model to handle the VAD. please change the TDD doc
 
 ## 📋 Missing Technical Specifications
 
@@ -198,32 +356,22 @@ Answer: the CallContext is a temporary storage we hold for the duration of a cal
 - No latency requirements specified (e.g., max response time for AI responses)
 - No concurrent call handling capacity defined
 - No resource usage estimates (CPU, memory, bandwidth)
+Ansswer - no latency requiremnet for now, but in general the ai agent is handling real-time voice call with human on the other end, the latency is expected to be less than 500ms for any operation. we don't have a concurrent call handling capacity defined for now, but we have plans to deploy multiple instances of this ai agent in serverless environment for horizontal scaling. but for now, we stick with just one instance.
 
 ### 12. **Monitoring & Observability**
 - No metrics collection strategy
 - No alerting specifications for system failures
 - No performance monitoring requirements
+Answer: skip for now
 
 ### 13. **Deployment Configuration**
 - Missing specific Render.com service configuration
 - No auto-scaling triggers defined
 - No health check endpoint specifications
+Answer: deployment will not be convered in the TDD, will be disucssed later in dev-ops doc
 
 ### 14. **Testing Data & Scenarios**
 - No test data specifications for different business configurations
 - No edge case testing scenarios defined
 - No load testing requirements
-
-## 🔧 Recommended Actions for Development Team
-
-1. **Clarify the Web Backend API contract** - Get the complete schema for all API endpoints
-2. **Define the caching strategy** - Choose between in-memory vs Redis and specify TTL values
-3. **Specify error handling workflows** - Document fallback behaviors for all failure scenarios
-4. **Clarify the "stateless" architecture** - Resolve the contradiction with session management
-5. **Define performance requirements** - Set latency, throughput, and resource usage targets
-6. **Complete the audio processing specification** - Justify sample rates and quality requirements
-7. **Specify monitoring requirements** - Define metrics, logging, and alerting needs
-8. **Create deployment runbooks** - Document exact Render.com configuration steps
-
-This TDD provides a solid foundation but needs these clarifications before implementation can begin effectively.
-        
+answer: we should only do unit test for the ai agent, no load testing for now.
